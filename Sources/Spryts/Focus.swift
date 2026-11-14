@@ -275,7 +275,8 @@ final class FocusKeeper: ObservableObject {
         }
         if names.isEmpty {
             await Self.bringForward(focusApp)
-            return "Only \(focusName) is showing already. You're set."
+            return only == nil ? "Only \(focusName) is showing already. You're set."
+                               : "None of those are showing. \(focusName) is up front."
         }
 
         // Record the desk before touching it. A second sweep on top of the first keeps the original record.
@@ -377,11 +378,17 @@ final class FocusKeeper: ObservableObject {
         var missing: [String] = []
         let config = NSWorkspace.OpenConfiguration()
         config.activates = false
+        // Read what's running once, before launching anything. After a launch the workspace list refreshes in
+        // the background, and running apps briefly drop out of it (tested: Xcode and Notes were "reopened").
+        var runningNow: [String: NSRunningApplication] = [:]
+        for running in NSWorkspace.shared.runningApplications {
+            if let id = running.bundleIdentifier, runningNow[id] == nil { runningNow[id] = running }
+        }
         for app in context.apps {
             let appURL = app.path.map { URL(fileURLWithPath: $0) }.flatMap { FileManager.default.fileExists(atPath: $0.path) ? $0 : nil }
                 ?? NSWorkspace.shared.urlForApplication(withBundleIdentifier: app.id)
             var wasRunning = false
-            if let running = Self.runningApp(app.id) {
+            if let running = runningNow[app.id] {
                 wasRunning = true
                 if !app.hidden && running.isHidden {
                     running.unhide()
@@ -488,7 +495,7 @@ final class FocusKeeper: ObservableObject {
     }
 
     nonisolated private static func defaultName() -> String {
-        let focus = guessFocus().flatMap { NSRunningApplication.runningApplications(withBundleIdentifier: $0).first?.localizedName } ?? "Desk"
+        let focus = guessFocus().flatMap { id in NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == id })?.localizedName } ?? "Desk"
         let stamp = DateFormatter()
         stamp.dateFormat = "EEE d MMM HH:mm"
         return focus + " · " + stamp.string(from: Date())
@@ -553,7 +560,7 @@ enum FocusCLI {
         switch command {
         case "guess":
             if let id = FocusKeeper.guessFocus() {
-                let name = NSRunningApplication.runningApplications(withBundleIdentifier: id).first?.localizedName ?? id
+                let name = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == id })?.localizedName ?? id
                 print("\(name) (\(id))")
             } else {
                 print("No guess.")
