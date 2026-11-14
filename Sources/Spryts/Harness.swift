@@ -30,8 +30,12 @@ struct Approval: Identifiable, Equatable {
     let danger: Bool      // destructive or outbound: always asks, never remembered
     let auto: Bool        // harmless enough to allow without asking
     let grantKey: String  // what "allow for this task" remembers
+    let path: String      // the file an edit touches, if any
+    let command: String   // the shell command, if any
 
     init(id: String, sessionID: String, tool: String, input: [String: Any]) {
+        self.path = input["file_path"] as? String ?? input["path"] as? String ?? input["target_file"] as? String ?? ""
+        self.command = (input["command"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         self.id = id
         self.sessionID = sessionID
         self.tool = tool
@@ -317,11 +321,12 @@ enum Harness {
             guard let data = try? Data(contentsOf: file),
                   let object = try? JSONSerialization.jsonObject(with: data),
                   let obj = object as? [String: Any] else { continue }
+            // Claude Code and Grok spell the same three fields differently.
             out.append(Approval(
                 id: id,
-                sessionID: obj["session_id"] as? String ?? "",
-                tool: obj["tool_name"] as? String ?? "tool",
-                input: obj["tool_input"] as? [String: Any] ?? [:]))
+                sessionID: obj["session_id"] as? String ?? obj["sessionId"] as? String ?? "",
+                tool: Harness.canonical(obj["tool_name"] as? String ?? obj["toolName"] as? String ?? "tool"),
+                input: obj["tool_input"] as? [String: Any] ?? obj["toolInput"] as? [String: Any] ?? [:]))
         }
         return out
     }
@@ -336,7 +341,7 @@ enum Harness {
         var text = ""
         if let command = input["command"] as? String {
             text = command
-        } else if let path = input["file_path"] as? String {
+        } else if let path = input["file_path"] as? String ?? input["path"] as? String ?? input["target_file"] as? String {
             text = path
         } else if let pattern = input["pattern"] as? String {
             text = pattern
@@ -356,8 +361,8 @@ enum Harness {
 extension ChatSession {
     /// The harness to use for this character, if it has one and it is installed.
     func harnessBinary() -> String? {
-        guard sheet.harness == "claude-code" else { return nil }
-        return Harness.claudePath
+        guard sheet.harness != nil else { return nil }
+        return engine == "grok" ? Harness.grokPath : Harness.claudePath
     }
 
     private var harnessPrompt: String {
@@ -429,6 +434,17 @@ extension ChatSession {
     /// Runs one turn through Claude Code and returns the final reply text.
     @MainActor
     func runHarness(binary: String, prompt: String) async throws -> String {
+        if engine == "grok" {
+            do {
+                return try await runOnce(binary: binary, prompt: prompt, dropKeys: false)
+            } catch {
+                let text = error.localizedDescription.lowercased()
+                if text.contains("401") || text.contains("authentication") || text.contains("login") || text.contains("sign in") {
+                    throw HarnessFailure(message: "Grok's sign-in has expired. Use Connect in the ✦ menu to sign in again, then ask me again.")
+                }
+                throw error
+            }
+        }
         let environment = ProcessInfo.processInfo.environment
         let hasKey = Harness.credentialVariables.contains(where: { environment[$0] != nil })
         do {
@@ -456,7 +472,13 @@ extension ChatSession {
     private func runOnce(binary: String, prompt: String, dropKeys: Bool) async throws -> String {
         try Harness.prepareWorkspace()
 
-        var arguments = ["-p", prompt.hasPrefix("-") ? " " + prompt : prompt,
+        let grok = engine == "grok"
+        let began = Date()
+        var arguments: [String] = []
+        if grok {
+            arguments = try grokArguments(prompt: prompt)
+        } else {
+        arguments = ["-p", prompt.hasPrefix("-") ? " " + prompt : prompt,
                          "--output-format", "stream-json", "--verbose", "--include-partial-messages",
                          "--append-system-prompt", harnessPrompt]
         if projectFolder != nil {
@@ -474,15 +496,17 @@ extension ChatSession {
                 arguments += ["--add-dir", journal.path, "--allowedTools", "Edit(/" + journal.path + "/**)"]
             }
         }
-        if !model.isEmpty { arguments += ["--model", model] }
+        if !model.isEmpty && !model.hasPrefix("grok") { arguments += ["--model", model] }
         if let id = harnessSession { arguments += ["--resume", id] }
+        }
 
         let run = Process()
         run.executableURL = URL(fileURLWithPath: binary)
         run.arguments = arguments
-        run.currentDirectoryURL = projectFolder ?? Harness.workspace
+        run.currentDirectoryURL = projectFolder ?? (grok ? Harness.grokWorkspace : Harness.workspace)
         var environment = ProcessInfo.processInfo.environment
-        environment["PATH"] = (environment["PATH"] ?? "/usr/bin:/bin") + ":/opt/homebrew/bin:/usr/local/bin:" + NSHomeDirectory() + "/.local/bin"
+environment["PATH"] = (environment["PATH"] ?? "/usr/bin:/bin") + ":/opt/homebrew/bin:/usr/local/bin:" + NSHomeDirectory() + "/.local/bin:" + NSHomeDirectory() + "/.grok/bin"
+        if grok && !Harness.grokSignedIn, let key = Config.key("XAI_API_KEY") { environment["XAI_API_KEY"] = key }
         let keyInEnvironment = Harness.credentialVariables.contains(where: { environment[$0] != nil })
         if dropKeys {
             for name in Harness.credentialVariables { environment.removeValue(forKey: name) }
@@ -531,14 +555,14 @@ extension ChatSession {
                 guard let message = obj["message"] as? [String: Any],
                       let content = message["content"] as? [[String: Any]] else { break }
                 for block in content where (block["type"] as? String) == "tool_use" {
-                    let name = block["name"] as? String ?? "tool"
+                    let name = Harness.canonical(block["name"] as? String ?? "tool")
                     let input = block["input"] as? [String: Any] ?? [:]
                     let id = block["id"] as? String ?? UUID().uuidString
                     let kind = Harness.kind(tool: name, input: input)
                     if !steps.contains(where: { $0.id == id }) {
                         var step = AgentStep(id: id, tool: name, detail: Harness.summarize(tool: name, input: input, limit: 90), state: "running")
                         step.kind = kind
-                        step.path = input["file_path"] as? String ?? ""
+                        step.path = input["file_path"] as? String ?? input["path"] as? String ?? input["target_file"] as? String ?? ""
                         step.before = String((input["old_string"] as? String ?? "").prefix(6000))
                         step.after = String((input["new_string"] as? String ?? input["content"] as? String ?? "").prefix(6000))
                         if kind == "run" || kind == "build" || kind == "test" {
@@ -601,6 +625,7 @@ extension ChatSession {
         let errorText = (try? String(contentsOf: errorFile, encoding: .utf8)) ?? ""
         Harness.log("exit=\(run.terminationStatus) steps=\(steps.count) stopped=\(stopped) error=\(String((failure ?? "").prefix(400))) stderr=\(String(errorText.suffix(400)))")
         for i in steps.indices where steps[i].state == "running" { steps[i].state = stopped ? "denied" : "done" }
+        if grok { checkGrokGate(since: began, usedTools: steps.contains(where: { $0.kind == "edit" || $0.kind == "run" || $0.kind == "build" || $0.kind == "test" })) }
 
         if stopped {
             stopped = false
@@ -612,7 +637,9 @@ extension ChatSession {
         }
         if final.isEmpty && current.isEmpty {
             harnessSession = nil
-            throw HarnessFailure(message: "Claude Code returned nothing (exit code \(run.terminationStatus)). Try running `claude` in Terminal to check it is signed in.")
+throw HarnessFailure(message: grok
+                ? "Grok returned nothing (exit code \(run.terminationStatus)). Try running `grok` in Terminal to check it is signed in."
+                : "Claude Code returned nothing (exit code \(run.terminationStatus)). Try running `claude` in Terminal to check it is signed in.")
         }
         return final.isEmpty ? current : final
     }
@@ -628,7 +655,7 @@ extension ChatSession {
     // MARK: Approvals
 
     func request(_ item: Approval) {
-        if item.auto || (!item.danger && taskGrants.contains(item.grantKey)) {
+        if item.auto || (!item.danger && taskGrants.contains(item.grantKey)) || (engine == "grok" && grokAllows(item)) {
             Harness.answer(item.id, allow: true)
             return
         }

@@ -25,6 +25,19 @@ Only Pip (the generalist) has the apps, the desk and the Mac-control actions.
 
 Roles so far: `generalist` (Pip, desk), `coder` (Nova, IDE), `writer` (Ember, studio), `coach` (Rally, training room).
 
+## Two engines, one set of characters
+
+Every character can run on Claude Code or on Grok (the `grok` command-line agent); the ✦ menu switches all of them.
+Nothing about a character may depend on which engine is behind it.
+
+- Claude Code: `Harness.swift`. Approvals come through its `PermissionRequest` hook.
+- Grok: `GrokHarness.swift`. Grok has no hook that waits on a permission prompt, so it runs with `--always-approve`
+  and a `PreToolUse` gate (`~/.grok/hooks/spryts.json`) asks the person instead. The gate ignores Grok sessions
+  Spryts didn't start. If the gate can't be installed, or tools run without it firing, runs fall back to read-only.
+  Never weaken that fallback.
+- Both emit the same stream format, so one parser in `Harness.runOnce` serves both. Grok's tool names are mapped
+  to the shared ones in `Harness.canonical`.
+
 ## Working here
 
 - Build with `Run Spryts.command`; it writes `build.log`. Don't build inside this folder by hand: it is synced by iCloud.

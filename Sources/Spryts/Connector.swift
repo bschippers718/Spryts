@@ -58,8 +58,16 @@ final class Connector: ObservableObject {
         }
     }
 
-    /// Looks again at whether Claude Code is installed and signed in.
+    /// Looks again at whether the chosen agent is installed and signed in.
     func refresh() {
+        if Engine.current == "grok" {
+            let found = Harness.findGrok()
+            Harness.grokPath = found
+            working = ""
+            problem = ""
+            state = found == nil ? .missing : (Harness.grokSignedIn || Config.key("XAI_API_KEY") != nil ? .connected : .signedOut)
+            return
+        }
         DispatchQueue.global(qos: .userInitiated).async {
             let found = Harness.findClaude()
             DispatchQueue.main.async { Harness.claudePath = found }
@@ -77,6 +85,10 @@ final class Connector: ObservableObject {
         if !working.isEmpty { return }
         problem = ""
         working = "Getting ready…"
+        if Engine.current == "grok" {
+            connectGrok()
+            return
+        }
         DispatchQueue.global(qos: .userInitiated).async {
             var claude = Harness.findClaude()
             if claude == nil {
@@ -105,6 +117,35 @@ final class Connector: ObservableObject {
         }
     }
 
+    /// The same two steps for Grok: install if missing, then sign in through the browser.
+    private func connectGrok() {
+        DispatchQueue.global(qos: .userInitiated).async {
+            var grok = Harness.findGrok()
+            if grok == nil {
+                DispatchQueue.main.async { self.working = "Installing Grok (about a minute)…" }
+                let install = self.run("/bin/bash", ["-c", "curl -fsSL https://x.ai/cli/install.sh | bash"], keep: true)
+                grok = Harness.findGrok()
+                if grok == nil {
+                    let detail = install.output.split(separator: "\n").last.map(String.init) ?? ""
+                    self.finish(.missing, problem: "Grok didn't install. " + detail)
+                    return
+                }
+            }
+            guard let path = grok else { return }
+            DispatchQueue.main.async {
+                Harness.grokPath = path
+                self.working = "Finish signing in in your browser…"
+            }
+            let login = self.run(path, ["login"], keep: true)
+            if Harness.grokSignedIn {
+                self.finish(.connected)
+            } else {
+                let detail = login.output.split(separator: "\n").last.map(String.init) ?? ""
+                self.finish(.signedOut, problem: "Sign-in didn't finish. " + String(detail.prefix(160)))
+            }
+        }
+    }
+
     func cancel() {
         process?.terminate()
     }
@@ -120,11 +161,11 @@ struct ConnectCard: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 Image(systemName: "link.circle.fill").foregroundColor(tint)
-                Text(connector.state == .missing ? "\(name) needs Claude Code" : "\(name) isn't signed in to Claude")
+Text(connector.state == .missing ? "\(name) needs \(Engine.current == "grok" ? "Grok" : "Claude Code")" : "\(name) isn't signed in to \(Engine.name)")
                     .font(.system(size: 12, weight: .semibold))
             }
             Text(connector.working.isEmpty
-                 ? "Connect once in your browser and every character is ready. It uses your Claude plan, not an API key."
+                 ? "Connect once in your browser and every character is ready. It uses your \(Engine.name) plan, not an API key."
                  : connector.working)
                 .font(.system(size: 11))
                 .foregroundColor(.secondary)

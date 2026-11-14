@@ -61,6 +61,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var grabbed: SprytCharacter?
     private var game: OrangeSmash?
+    private var engineItems: [NSMenuItem] = []
     private var hud: GameHUDController?
     private var dragging = false
     private var grabOffset = CGPoint.zero
@@ -306,7 +307,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             menu.addItem(item)
         }
         menu.addItem(NSMenuItem.separator())
-        let connectItem = NSMenuItem(title: "Connect Claude in browser…", action: #selector(connectClaude), keyEquivalent: "")
+        let claudeItem = NSMenuItem(title: "Run on Claude Code", action: #selector(chooseEngine(_:)), keyEquivalent: "")
+        claudeItem.target = self
+        claudeItem.tag = 0
+        claudeItem.state = Engine.current == "grok" ? .off : .on
+        menu.addItem(claudeItem)
+        let grokItem = NSMenuItem(title: "Run on Grok", action: #selector(chooseEngine(_:)), keyEquivalent: "")
+        grokItem.target = self
+        grokItem.tag = 1
+        grokItem.state = Engine.current == "grok" ? .on : .off
+        menu.addItem(grokItem)
+        engineItems = [claudeItem, grokItem]
+        let connectItem = NSMenuItem(title: "Connect in browser…", action: #selector(connectClaude), keyEquivalent: "")
         connectItem.target = self
         menu.addItem(connectItem)
         let playItem = NSMenuItem(title: "Play Orange Smash", action: #selector(playFromMenu), keyEquivalent: "")
@@ -353,6 +365,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     // MARK: Games
+
+    /// Switches every character between Claude Code and Grok. Conversations don't carry across, so each starts fresh.
+    @objc private func chooseEngine(_ sender: NSMenuItem) {
+        let wanted = sender.tag == 1 ? "grok" : "claude"
+        if wanted == Engine.current { return }
+        Engine.current = wanted
+        for (index, item) in engineItems.enumerated() { item.state = index == sender.tag ? .on : .off }
+        for character in characters where !character.session.busy {
+            character.session.harnessSession = nil
+            character.session.objectWillChange.send()
+            character.session.save()
+        }
+        Connector.shared.refresh()
+    }
 
     @objc private func connectClaude() {
         Connector.shared.connect()

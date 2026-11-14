@@ -434,7 +434,7 @@ struct ChatView: View {
 
     private var quickActions: some View {
         Group {
-            if session.sheet.harness == "claude-code" && connector.needsConnecting {
+            if session.sheet.harness != nil && connector.needsConnecting {
                 ConnectCard(name: name, tint: tint)
             }
             if session.busy && session.onPlay != nil {

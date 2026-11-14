@@ -110,14 +110,17 @@ final class ChatSession: ObservableObject {
 
     /// Models offered in the picker. Grok characters keep whatever their sheet names.
     var modelChoices: [(id: String, label: String)] {
+        if sheet.harness != nil && engine == "grok" { return ChatSession.grokModels }
         if sheet.provider == "grok" { return [(sheet.model, sheet.model)] }
         var choices = ChatSession.claudeModels
-        if !choices.contains(where: { $0.id == model }) { choices.append((model, model)) }
+        if !model.hasPrefix("grok") && !choices.contains(where: { $0.id == model }) { choices.append((model, model)) }
         return choices
     }
 
     var modelLabel: String {
-        modelChoices.first(where: { $0.id == model })?.label ?? model
+        if sheet.harness != nil && engine == "grok" && !model.hasPrefix("grok-") { return "Grok default" }
+        if sheet.harness != nil && engine != "grok" && model.hasPrefix("grok") { return "Default" }
+        return modelChoices.first(where: { $0.id == model })?.label ?? model
     }
 
     // MARK: Memory on disk (kept on this Mac, outside any synced folder)
@@ -187,7 +190,8 @@ final class ChatSession: ObservableObject {
     // MARK: What the model is told
 
     var providerLabel: String {
-        if sheet.harness == "claude-code" {
+        if sheet.harness != nil {
+            if engine == "grok" { return Harness.grokPath != nil ? "Grok" : "Not connected" }
             if Harness.claudePath != nil { return "Claude Code" }
             return apiKey == nil ? "Not connected" : "Claude Code not found, using Claude"
         }
@@ -359,8 +363,8 @@ final class ChatSession: ObservableObject {
                     self.onEvent?(.tool("search"))
                     try await Task.sleep(nanoseconds: 1_800_000_000)
                     let keyName = self.sheet.provider == "grok" ? "XAI_API_KEY" : "ANTHROPIC_API_KEY"
-                    let reply = self.sheet.harness == "claude-code"
-                        ? "[mood=playful gesture=wave]\nHi, I'm \(self.sheet.name). I'm not connected to Claude yet. Press Connect below, sign in in your browser, and I'll answer for real."
+                    let reply = self.sheet.harness != nil
+                        ? "[mood=playful gesture=wave]\nHi, I'm \(self.sheet.name). I'm not connected to \(Engine.name) yet. Press Connect below, sign in in your browser, and I'll answer for real."
                         : "[mood=playful gesture=wave]\nHi, I'm \(self.sheet.name). I'm in demo mode because there is no \(keyName) yet. Add it to the .env file in the Spryts folder, run me again, and I'll answer for real."
                     for word in reply.split(separator: " ", omittingEmptySubsequences: false) {
                         raw += (raw.isEmpty ? "" : " ") + String(word)
