@@ -665,6 +665,152 @@ final class SprytCharacter {
 
     // MARK: The characters notice each other
 
+    /// A heart on its way from one character to another.
+    private struct HeartFlight {
+        let node: SCNNode
+        let from: CGPoint
+        weak var target: SprytCharacter?
+        var age: CGFloat
+    }
+    private var hearts: [HeartFlight] = []
+    private var heartDelay: CGFloat = 0
+    private weak var heartTarget: SprytCharacter?
+    private var socialClock: CGFloat = CGFloat.random(in: 0...30)
+    private var nextSocial: CGFloat = CGFloat.random(in: 45...110)
+    private var replyIn: CGFloat = 0
+    private var replyKind = ""
+    private var replyLine = ""
+    private var swoon: CGFloat = 0
+
+    private var role: String { sheet.role ?? "generalist" }
+
+    private func opener(to other: SprytCharacter) -> String {
+        let n = other.sheet.name
+        var lines = ["Hey \(n)! Having a good day?", "\(n)! You look great over there.", "Psst, \(n). Glad you're here."]
+        if role == "coder" { lines += ["Hey \(n), all systems go?", "\(n)! Nice work today."] }
+        if role == "writer" { lines += ["\(n), you brighten the whole screen.", "So good to see you, \(n)."] }
+        return lines.randomElement() ?? "Hey \(n)!"
+    }
+
+    private var answer: String {
+        if role == "coder" { return ["Affirmative!", "Ha. Compiling, as ever.", "All good. You're the best."].randomElement() ?? "Yes!" }
+        if role == "writer" { return ["Oh, delightfully so.", "You do say the nicest things.", "Ha! Likewise, friend."].randomElement() ?? "Yes!" }
+        return ["Ha! Always.", "You know it!", "Aw, thanks for checking in."].randomElement() ?? "Yes!"
+    }
+
+    /// Every so often, when two characters are both at a loose end, one reaches out to the other.
+    private func social(dt: CGFloat, others: [SprytCharacter], quiet: Bool) {
+        if swoon > 0 { swoon -= dt }
+
+        // A blown kiss leaves the hand a moment after the gesture starts.
+        if heartDelay > 0 {
+            heartDelay -= dt
+            if heartDelay <= 0, let target = heartTarget, let stage = node.parent {
+                let H = body.height
+                let text = SCNText(string: "♥", extrusionDepth: 0)
+                text.font = NSFont.systemFont(ofSize: H * 0.24, weight: .heavy)
+                text.flatness = 0.2
+                let m = SCNMaterial()
+                m.lightingModel = .constant
+                m.diffuse.contents = NSColor(srgbRed: 1.0, green: 0.35, blue: 0.5, alpha: 1)
+                m.writesToDepthBuffer = false
+                text.firstMaterial = m
+                let heart = SCNNode(geometry: text)
+                let box = text.boundingBox
+                heart.pivot = SCNMatrix4MakeTranslation((box.min.x + box.max.x) / 2, (box.min.y + box.max.y) / 2, 0)
+                let start = CGPoint(x: node.position.x + facing * H * 0.25, y: node.position.y + H * 0.72)
+                heart.position = v3(start.x, start.y, zIndex + 95)
+                stage.addChildNode(heart)
+                hearts.append(HeartFlight(node: heart, from: start, target: target, age: 0))
+            }
+        }
+        var i = hearts.count - 1
+        while i >= 0 {
+            hearts[i].age += dt
+            let s = hearts[i].age / 1.3
+            if s >= 1 || hearts[i].target == nil {
+                hearts[i].node.removeFromParentNode()
+                hearts.remove(at: i)
+            } else if let target = hearts[i].target {
+                let endX = target.node.position.x
+                let endY = target.node.position.y + target.body.height * 0.8
+                let from = hearts[i].from
+                let x = from.x + (endX - from.x) * s
+                let y = from.y + (endY - from.y) * s + sin(s * CGFloat.pi) * 70
+                hearts[i].node.position = v3(x, y, zIndex + 95)
+                let beat = 1 + 0.18 * sin(hearts[i].age * 16)
+                hearts[i].node.scale = v3(beat, beat, 1)
+            }
+            i -= 1
+        }
+
+        // Answering someone who reached out.
+        if replyIn > 0 {
+            replyIn -= dt
+            if replyIn <= 0 {
+                switch replyKind {
+                case "kiss":
+                    swoon = 3.2
+                    showEmote("♥")
+                    emit(count: 6, sparkle: true, dy: body.height * 0.9)
+                    play("nod")
+                case "chat":
+                    pendingSpeech = replyLine
+                    play("nod")
+                case "cheer":
+                    play("pump")
+                default:
+                    play("wave")
+                }
+                idleFor = max(idleFor, 2.4)
+            }
+        }
+
+        socialClock += dt
+        if quiet || playing || socialClock < nextSocial || !isFree { return }
+        let H = body.height
+        let free = others.filter { $0 !== self && $0.isFree && !$0.playing && abs($0.pos.x - pos.x) > H }
+        guard let other = free.randomElement() else {
+            socialClock = nextSocial - 8   // nobody free just now: look again shortly
+            return
+        }
+        socialClock = 0
+        nextSocial = CGFloat.random(in: 60...150)
+        facing = other.pos.x >= pos.x ? 1 : -1
+        if mode == .sitting { setMode(.idle) }
+        idleFor = max(idleFor, 4)
+        let roll = CGFloat.random(in: 0...1)
+        if roll < 0.35 {
+            play("wave")
+            other.reachedOut("wave", by: self, line: "", delay: 0.9)
+        } else if roll < 0.65 {
+            pendingSpeech = opener(to: other)
+            play("wave")
+            other.reachedOut("chat", by: self, line: other.answer, delay: 2.8)
+        } else if roll < 0.82 {
+            play("kiss")
+            heartDelay = 0.7
+            heartTarget = other
+            other.reachedOut("kiss", by: self, line: "", delay: 2.0)
+        } else {
+            play("pump")
+            showEmote("♪")
+            other.reachedOut("cheer", by: self, line: "", delay: 0.6)
+        }
+    }
+
+    /// Another character waved, spoke, cheered or blew a kiss this way.
+    func reachedOut(_ kind: String, by other: SprytCharacter, line: String, delay: CGFloat) {
+        if !isFree { return }
+        facing = other.pos.x >= pos.x ? 1 : -1
+        if mode == .sitting { setMode(.idle) }
+        idleFor = max(idleFor, delay + 2.5)
+        replyKind = kind
+        replyLine = line
+        replyIn = delay
+        socialClock = 0
+    }
+
     func greeted(from x: CGFloat) {
         if !isFree { return }
         facing = x >= pos.x ? 1 : -1
@@ -1276,6 +1422,7 @@ final class SprytCharacter {
         lastX = pos.x
 
         updatePuffs(dt: dt)
+        social(dt: dt, others: others, quiet: quiet)
         dartTimer -= dt
         if dartTimer <= 0 {
             dartTimer = CGFloat.random(in: 0.8...2.6)
@@ -2313,6 +2460,16 @@ final class SprytCharacter {
                 p.elbowR = 1.7
                 p.headTilt = 0.2
                 p.bodyY += 2
+            case "kiss":
+                // Hand to the mouth, then out toward whoever it is for.
+                if gestureTime > 1.25 {
+                    p.armR = 1.1
+                    p.elbowR = 2.4
+                    p.headTilt = 0.12
+                } else {
+                    p.armR = 1.35
+                    p.elbowR = 0.3
+                }
             case "think":
                 p.armR = 0.95
                 p.elbowR = 2.2
@@ -2596,12 +2753,12 @@ final class SprytCharacter {
         p.earsBack = startled ? 1 : 0
         p.glowAlt = (activity == .thinking || activity == .tool || activity == .asking) ? 1 : 0
         if p.glowAlt > 0 { glow = max(glow, 0.8) }
-        p.smile = smile
+        p.smile = swoon > 0 ? max(smile, 0.9) : smile
         p.mouthOpen = mouth
         p.browAngle = brow
         p.browLift = lift
         p.browCock = cock
-        p.blush = blush
+        p.blush = swoon > 0 ? 1 : blush
         p.glow = glow
 
         // Wings beat in the air and settle on the ground.
