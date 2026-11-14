@@ -29,7 +29,7 @@ struct ChatView: View {
 
     private var emptyHint: String {
         if isCoach { return "\(name) is your coach. Ask for a workout, log a session, or click to open the training room." }
-        if isForecaster { return "\(name) reads your week like weather. Ask for today's sky, or click to open the forecast room." }
+        if isForecaster { return "\(name) is your weather. Click the cloud for the next five days, or ask what to wear." }
         if !isCoder && !isWriter && !isGeneralist { return "Ask \(name) anything." }
         if isCoder { return "\(name) is the programmer. Click to open the IDE, or ask a quick question about the code here." }
         if isWriter { return "\(name) is the writer. Click to open the studio, or ask for a word, a line or a fix here." }
@@ -178,7 +178,7 @@ struct ChatView: View {
             } else if isWriter {
                 writerStrip
             } else if isForecaster {
-                ForecastStrip(session: session, model: ForecastModel.of(session.sheet.id))
+                SkyStrip(session: session, service: WeatherService.of(session.sheet.id))
             } else if isCoach {
                 CoachStrip(session: session, journal: TrainingJournal.of(session.sheet.id), tint: tint)
             } else if isGeneralist {
@@ -517,17 +517,17 @@ struct ChatView: View {
     private var forecasterActions: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
-                chip("Today's sky") {
-                    session.ask(display: "Today's sky",
-                                prompt: "Give me today's forecast from my files and anything I've given you. Write forecast.md and tell me the condition in one sentence.")
+                chip("Umbrella today?") {
+                    session.ask(display: "Do I need an umbrella today?", prompt: "Do I need an umbrella today?")
                 }
-                chip("Plan my week") {
-                    session.ask(display: "Plan my week",
-                                prompt: "Give me the outlook for the next five to seven days. Write week.md and name the heaviest day.")
+                chip("What to wear") {
+                    session.ask(display: "What should I wear today?", prompt: "What should I wear today?")
                 }
-                chip("Too much on") {
-                    session.ask(display: "Too much on",
-                                prompt: "I've got too much on. Forecast this as a storm if it is one, name the one or two things to move or drop, and suggest what to say to whoever is waiting.")
+                chip("The next 5 days") {
+                    session.ask(display: "The next five days", prompt: "Give me the next five days, one short line each, and say which is the best one.")
+                }
+                chip("This weekend") {
+                    session.ask(display: "How's the weekend looking?", prompt: "How does the coming weekend look? If it is beyond your five days, say so.")
                 }
             }
             .padding(.horizontal, 12)
@@ -692,7 +692,7 @@ struct ChatView: View {
         if isCoder { return "Ask \(name) about the code…" }
         if isWriter { return "Ask \(name) about words…" }
         if isCoach { return "Tell \(name) how it went, or ask for a session…" }
-        if isForecaster { return "Ask \(name) what's coming…" }
+        if isForecaster { return "Ask \(name) about the weather…" }
         if isGeneralist { return "Ask \(name) or give a command…" }
         return "Ask \(name)…"
     }

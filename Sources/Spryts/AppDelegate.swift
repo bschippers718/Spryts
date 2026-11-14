@@ -32,7 +32,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var characters: [SprytCharacter] = []
     private var panels: [String: ChatPanelController] = [:]
     private var bubbles: [String: SpeechBubbleController] = [:]
-    private var weatherDrops: [String: WeatherDropController] = [:]   // the forecaster's four-day sky, toggled by a click
+    private var weatherDrops: [String: WeatherDropController] = [:]   // the forecaster's five-day sky, toggled by a click
     private let shelf = AppShelf()
     private var hotKey: HotKey?
     private var seenRequests: Set<String> = []
@@ -41,6 +41,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var pendingClickTime: CGFloat = 0
     private var hover: [String: CGFloat] = [:]
     private var frontPopup = ""
+    private var weatherClock: CGFloat = 0
     private var away: [String: CGFloat] = [:]
     private var statusItem: NSStatusItem!
     private var timer: Timer?
@@ -227,7 +228,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case "coder": return "IDE"
         case "writer": return "studio"
         case "coach": return "training room"
-        case "forecaster": return "forecast room"
+        case "forecaster": return "forecast"
         default: return "desk"
         }
     }
@@ -239,7 +240,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case "coder": return "code"
         case "writer": return "writing"
         case "coach": return "training"
-        case "forecaster": return "your week"
+        case "forecaster": return "weather"
         default: return role ?? ""
         }
     }
@@ -523,6 +524,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 } else {
                     Harness.answer(item.id, allow: false)
                 }
+            }
+
+            // Look at the real sky again every ten minutes; the service itself only fetches every half hour.
+            weatherClock += 0.25
+            if weatherClock > 600 {
+                weatherClock = 0
+                for drop in weatherDrops.values { drop.keepFresh() }
             }
 
             idleSeconds = secondsSinceInput()

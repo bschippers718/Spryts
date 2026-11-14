@@ -23,7 +23,8 @@ When you add a role (the `role` field in `Characters/<id>.json`), build all of t
 
 Only Pip (the generalist) has the apps, the desk and the Mac-control actions.
 
-Roles so far: `generalist` (Pip, desk), `coder` (Nova, IDE), `writer` (Ember, studio), `coach` (Rally, training room).
+Roles so far: `generalist` (Pip, desk), `coder` (Nova, IDE), `writer` (Ember, studio), `coach` (Rally, training room),
+`forecaster` (Drizzle, the real weather and nothing else: `Weather.swift`, `Forecast.swift`).
 
 ## Keep it calm
 

@@ -1611,7 +1611,7 @@ return CGRect(x: pos.x - H * 0.45, y: pos.y + altitude - 4, width: H * 0.9, heig
         pose.spin = spin
         pose.prop = target.prop
         pose.twitch = target.twitch
-        body.setStorm(session.busy ? 0.9 : 0.25)
+        body.setStorm(session.busy ? 0.9 : (isForecaster ? SkyState.rain : 0.25))
         body.apply(pose: pose, clip: clipName(), dt: dt,
                    showProp: (activity == .tool || (hobbyTime > 0 && drill == 0)) && mode == .idle, speed: speedX, time: t)
 
