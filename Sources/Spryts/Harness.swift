@@ -439,6 +439,7 @@ extension ChatSession {
         } else {
             for folder in Harness.sharedFolders { arguments += ["--add-dir", folder] }
         }
+        if !model.isEmpty { arguments += ["--model", model] }
         if let id = harnessSession { arguments += ["--resume", id] }
 
         let run = Process()

@@ -90,9 +90,34 @@ final class ChatSession: ObservableObject {
     var stopped = false
     var contextProvider: (() -> String)?
 
+    /// The model this character talks to. Starts from the sheet; a choice made in the app is remembered per character.
+    @Published var model: String {
+        didSet { UserDefaults.standard.set(model, forKey: "model." + sheet.id) }
+    }
+
     init(sheet: CharacterSheet) {
         self.sheet = sheet
+        self.model = UserDefaults.standard.string(forKey: "model." + sheet.id) ?? sheet.model
         load()
+    }
+
+    static let claudeModels: [(id: String, label: String)] = [
+        ("claude-opus-5-5", "Opus 5.5"),
+        ("claude-sonnet-5-5", "Sonnet 5.5"),
+        ("claude-haiku-5-5", "Haiku 5.5"),
+        ("claude-fable-5-2", "Fable 5.2"),
+    ]
+
+    /// Models offered in the picker. Grok characters keep whatever their sheet names.
+    var modelChoices: [(id: String, label: String)] {
+        if sheet.provider == "grok" { return [(sheet.model, sheet.model)] }
+        var choices = ChatSession.claudeModels
+        if !choices.contains(where: { $0.id == model }) { choices.append((model, model)) }
+        return choices
+    }
+
+    var modelLabel: String {
+        modelChoices.first(where: { $0.id == model })?.label ?? model
     }
 
     // MARK: Memory on disk (kept on this Mac, outside any synced folder)
@@ -411,13 +436,13 @@ final class ChatSession: ObservableObject {
             request.setValue("Bearer " + key, forHTTPHeaderField: "Authorization")
             var all: [[String: String]] = [["role": "system", "content": systemPrompt]]
             all.append(contentsOf: turns)
-            body = ["model": sheet.model, "stream": true, "messages": all]
+            body = ["model": model, "stream": true, "messages": all]
         } else {
             guard let url = URL(string: "https://api.anthropic.com/v1/messages") else { return nil }
             request = URLRequest(url: url)
             request.setValue(key, forHTTPHeaderField: "x-api-key")
             request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
-            body = ["model": sheet.model, "max_tokens": 1024, "stream": true, "system": systemPrompt, "messages": turns]
+            body = ["model": model, "max_tokens": 1024, "stream": true, "system": systemPrompt, "messages": turns]
         }
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")

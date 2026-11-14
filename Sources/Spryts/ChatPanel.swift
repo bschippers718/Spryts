@@ -106,7 +106,7 @@ struct ChatView: View {
         HStack(spacing: 8) {
             Circle().fill(tint).frame(width: 10, height: 10)
             Text(name).font(.system(size: 13, weight: .semibold))
-            Text(session.providerLabel).font(.system(size: 11)).foregroundColor(.secondary)
+            Text(session.providerLabel + " · " + session.modelLabel).font(.system(size: 11)).foregroundColor(.secondary)
             Spacer()
             if session.busy {
                 Button(action: { session.stop() }) {

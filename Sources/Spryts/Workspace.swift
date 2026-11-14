@@ -430,6 +430,24 @@ struct WorkspaceView: View {
             Text(role.isEmpty ? session.providerLabel : role.capitalized + " · " + session.providerLabel)
                 .font(.system(size: 11))
                 .foregroundColor(.secondary)
+            Menu {
+                ForEach(session.modelChoices, id: \.id) { choice in
+                    Button(action: { session.model = choice.id }) {
+                        if choice.id == session.model {
+                            Label(choice.label, systemImage: "checkmark")
+                        } else {
+                            Text(choice.label)
+                        }
+                    }
+                }
+            } label: {
+                Label(session.modelLabel, systemImage: "cpu")
+                    .font(.system(size: 12))
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .disabled(session.busy || session.modelChoices.count < 2)
+            .help("Model: " + session.model + ". Applies from the next message.")
             Button(action: chooseFolder) {
                 HStack(spacing: 5) {
                     Image(systemName: "folder")
