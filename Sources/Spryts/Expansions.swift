@@ -18,6 +18,9 @@ struct RoleTheme {
         case "writer":
             return RoleTheme(scheme: .light, design: .serif, corner: 14,
                              paper: Color(red: 0.98, green: 0.96, blue: 0.91))
+        case "coach":
+            return RoleTheme(scheme: .dark, design: .rounded, corner: 18,
+                             paper: Color(red: 0.05, green: 0.11, blue: 0.13))
         default:
             return RoleTheme(scheme: nil, design: .rounded, corner: 24, paper: nil)
         }

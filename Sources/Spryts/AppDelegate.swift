@@ -146,7 +146,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     apps.note(ask, mentioning: ask + " " + done)
                 }
             }
-            if sheet.harness != nil {
+            if sheet.harness != nil && AppDelegate.hasPlace(sheet.role) {
                 let id = sheet.id
                 character.session.onOpenWorkspace = { [weak self] in
                     Task { @MainActor [weak self] in self?.openWorkspace(id) }
@@ -195,8 +195,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 controller = WorkspaceWindowController(session: character.session, sheet: character.sheet)
             case "writer":
                 controller = StudioWindowController(session: character.session, sheet: character.sheet)
-            default:
+            case "coach":
+                controller = TrainingRoomController(session: character.session, sheet: character.sheet)
+            case "generalist":
                 controller = DeskController(session: character.session, sheet: character.sheet, shelf: shelf)
+            default:
+                // A role without a place of its own has no big window. It never borrows someone else's.
+                return
             }
             workspaces[id] = controller
         }
@@ -215,8 +220,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         switch role ?? "generalist" {
         case "coder": return "IDE"
         case "writer": return "studio"
+        case "coach": return "training room"
         default: return "desk"
         }
+    }
+
+    /// Roles that have an expanded view built for them.
+    static func hasPlace(_ role: String?) -> Bool {
+        ["generalist", "coder", "writer", "coach"].contains(role ?? "generalist")
     }
 
     @objc private func openWorkspaceFromMenu(_ sender: NSMenuItem) {
@@ -288,7 +299,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             item.tag = i
             menu.addItem(item)
         }
-        for (i, character) in characters.enumerated() where character.sheet.harness != nil {
+        for (i, character) in characters.enumerated() where character.sheet.harness != nil && AppDelegate.hasPlace(character.sheet.role) {
             let item = NSMenuItem(title: "Open " + character.sheet.name + "'s " + AppDelegate.placeName(character.sheet.role), action: #selector(openWorkspaceFromMenu(_:)), keyEquivalent: "")
             item.target = self
             item.tag = i

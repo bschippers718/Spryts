@@ -423,6 +423,39 @@ final class ProceduralBody: CharacterBody {
             }
         }
 
+        // Headband: a sweatband round the forehead, tied at the back. It rides on the skull so it follows its shape.
+        if features.contains("headband") {
+            let bandY = headR * 0.6
+            let bandR = headR * 0.84
+            if headShape == "box" {
+                let band = shape(SCNBox(width: headR * 2.02, height: headR * 0.26, length: headR * 1.82, chamferRadius: headR * 0.12), trim)
+                band.position = v3(0, bandY, 0)
+                skull.addChildNode(band)
+            } else {
+                let band = shape(SCNTorus(ringRadius: bandR, pipeRadius: headR * 0.11), trim)
+                band.position = v3(0, bandY, 0)
+                band.scale = v3(1, 1.5, 1)
+                skull.addChildNode(band)
+                let stripe = shape(SCNTorus(ringRadius: bandR * 1.04, pipeRadius: headR * 0.035), accent)
+                stripe.position = v3(0, bandY, 0)
+                skull.addChildNode(stripe)
+            }
+            for side in [CGFloat(-1), CGFloat(1)] {
+                let tie = shape(SCNBox(width: headR * 0.14, height: headR * 0.42, length: headR * 0.06, chamferRadius: headR * 0.03), trim)
+                tie.position = v3(side * headR * 0.12, bandY - headR * 0.18, -headR * 0.92)
+                tie.eulerAngles = v3(-0.35, 0, side * 0.45)
+                skull.addChildNode(tie)
+            }
+        }
+        if features.contains("wristbands") {
+            for lower in armLower {
+                let cuff = shape(SCNTorus(ringRadius: limbR * 1.0, pipeRadius: limbR * 0.38), trim)
+                cuff.position = v3(0, -armLen * 0.38, 0)
+                cuff.scale = v3(1, 1.6, 1)
+                lower.addChildNode(cuff)
+            }
+        }
+
         // Tails: a string of beads, a bushy fox tail, a long dragon tail, or a stub
         if features.contains("tail") {
             let tl = SCNNode()

@@ -53,3 +53,8 @@ open and switch apps, script them, run Shortcuts, read files, and take a screens
 - The stop button, or picking Pip up, stops the run.
 
 The agent works from `~/Library/Application Support/Spryts/workspace`, and can read Desktop, Documents and Downloads without asking.
+
+
+## Adding a character role
+
+Every character is its own specialist with its own popup, window and habits. The checklist for a new role is in `CLAUDE.md`.

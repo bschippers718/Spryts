@@ -76,6 +76,13 @@ final class SprytCharacter {
     private var isWriter: Bool { sheet.role == "writer" }
     /// The specialists are absorbed in their craft; only the generalist plays.
     private var isSpecialist: Bool { isCoder || isWriter }
+    private var isCoach: Bool { sheet.role == "coach" }
+    /// What the coach does with a spare moment: 1 jumping jacks, 2 squats, 3 side stretches, 4 running on the spot.
+    private var drill = 0
+    private var lastDrill = 0
+    /// The order characters left the stage in, so the ones in the wings can stack up tidily.
+    private static var offCounter = 0
+    private var offOrder = 0
     private(set) var petting = false
     private(set) var mode: Mode = .falling
     private(set) var activity: Activity = .none
@@ -689,12 +696,14 @@ final class SprytCharacter {
         var lines = ["Hey \(n)! Having a good day?", "\(n)! You look great over there.", "Psst, \(n). Glad you're here."]
         if role == "coder" { lines += ["Hey \(n), all systems go?", "\(n)! Nice work today."] }
         if role == "writer" { lines += ["\(n), you brighten the whole screen.", "So good to see you, \(n)."] }
+        if role == "coach" { lines += ["\(n)! Stretched today?", "Lap of the screen, \(n)? Easy pace.", "Hydrating, \(n)?"] }
         return lines.randomElement() ?? "Hey \(n)!"
     }
 
     private var answer: String {
         if role == "coder" { return ["Affirmative!", "Ha. Compiling, as ever.", "All good. You're the best."].randomElement() ?? "Yes!" }
         if role == "writer" { return ["Oh, delightfully so.", "You do say the nicest things.", "Ha! Likewise, friend."].randomElement() ?? "Yes!" }
+        if role == "coach" { return ["Feeling strong!", "Ha! Personal best day.", "Always. Good form, by the way."].randomElement() ?? "Yes!" }
         return ["Ha! Always.", "You know it!", "Aw, thanks for checking in."].randomElement() ?? "Yes!"
     }
 
@@ -860,6 +869,8 @@ final class SprytCharacter {
         peekOut = 0
         peekGoal = 0
         peekTimer = 1.6
+        SprytCharacter.offCounter += 1
+        offOrder = SprytCharacter.offCounter
         pos.x = side < 0 ? stageFrame.minX - H * 0.5 : stageFrame.maxX + H * 0.5
         setMode(.offstage)
     }
@@ -924,6 +935,7 @@ final class SprytCharacter {
             hobbyTime -= dt
             if activity != .none || mode != .idle { hobbyTime = 0 }
         }
+        if hobbyTime <= 0 { drill = 0 }
         if flashTime > 0 { flashTime -= dt }
         if smokeTime > 0 {
             smokeTime -= dt
@@ -1336,6 +1348,12 @@ final class SprytCharacter {
             peekOut += (peekGoal - peekOut) * min(1, 5 * dt)
             let edge = offSide < 0 ? world.frame.minX : world.frame.maxX
             pos.x = edge + offSide * H * (0.44 - 0.4 * peekOut)
+            // Several in the same wing stack up, first out at the bottom, and settle down as ones below leave.
+            var stackY = world.floorY
+            for other in others where other !== self && other.mode == .offstage && other.offSide == offSide && other.offOrder < offOrder {
+                stackY += other.body.height * 0.9
+            }
+            pos.y += (stackY - pos.y) * min(1, 6 * dt)
 
         case .sitting:
             sitFor -= dt
@@ -1465,7 +1483,15 @@ final class SprytCharacter {
             if fidget == 0 {
                 nextFidget -= dt
                 if nextFidget <= 0 {
-                    if isSpecialist {
+                    if isCoach && CGFloat.random(in: 0...1) < 0.6 {
+                        // The coach practises what it preaches: a short set of something, never the same twice running.
+                        var next = Int.random(in: 1...4)
+                        if next == lastDrill { next = next % 4 + 1 }
+                        drill = next
+                        lastDrill = next
+                        hobbyTime = CGFloat.random(in: 5...8)
+                        nextFidget = hobbyTime + CGFloat.random(in: 15...35)
+                    } else if isSpecialist {
                         if Bool.random() {
                             // Their own time: the programmer types or reads; the writer scribbles or reads.
                             workKind = Bool.random() ? (isWriter ? "write" : "edit") : "read"
@@ -1523,7 +1549,7 @@ final class SprytCharacter {
         pose.prop = target.prop
         pose.twitch = target.twitch
         body.apply(pose: pose, clip: clipName(), dt: dt,
-                   showProp: (activity == .tool || hobbyTime > 0) && mode == .idle, speed: speedX, time: t)
+                   showProp: (activity == .tool || (hobbyTime > 0 && drill == 0)) && mode == .idle, speed: speedX, time: t)
 
         shadowAlpha += ((grounded ? 0.22 : 0) - shadowAlpha) * min(1, 10 * dt)
         shadow.opacity = shadowAlpha
@@ -2299,7 +2325,7 @@ final class SprytCharacter {
             p.bodyY = -L * 0.03
         }
 
-        let acting: Activity = (activity == .none && hobbyTime > 0) ? .tool : activity
+        let acting: Activity = (activity == .none && hobbyTime > 0 && drill == 0) ? .tool : activity
         if mode == .idle {
             switch acting {
             case .thinking:
@@ -2440,6 +2466,54 @@ final class SprytCharacter {
             let worldYaw = clamp(dx / 260, -1, 1)
             p.headYaw += clamp(worldYaw - p.yaw, -1.1, 1.1) * 0.9
             p.headPitch += clamp(-dy / 420, -0.45, 0.45)
+        }
+
+        // The coach's own exercise.
+        if drill != 0 && hobbyTime > 0 && mode == .idle && activity == .none {
+            let size = body.height
+            p.yaw = 0
+            switch drill {
+            case 1:
+                // Jumping jacks.
+                let open = 0.5 + 0.5 * sin(t * 10)
+                p.armOutL = 0.3 + 2.4 * open
+                p.armOutR = 0.3 + 2.4 * open
+                p.armL = 0
+                p.armR = 0
+                p.elbowL = 0.1
+                p.elbowR = 0.1
+                p.bodyY += size * 0.05 * abs(sin(t * 10))
+            case 2:
+                // Squats, arms out in front for balance.
+                let down = 0.5 - 0.5 * cos(t * 3.2)
+                p.bodyY -= size * 0.15 * down
+                p.squash = 1 - 0.1 * down
+                p.armL = 1.3 * down
+                p.armR = 1.3 * down
+                p.elbowL = 0.1
+                p.elbowR = 0.1
+            case 3:
+                // Side stretches, one arm over the head at a time.
+                let s = sin(t * 1.6)
+                p.tilt = 0.28 * s
+                p.headTilt = 0.15 * s
+                p.armOutR = s > 0 ? 2.8 : 0.3
+                p.armOutL = s < 0 ? 2.8 : 0.3
+                p.elbowL = 0.2
+                p.elbowR = 0.2
+            default:
+                // Running on the spot.
+                let s = sin(t * 12)
+                p.legL = 0.7 * s
+                p.legR = -0.7 * s
+                p.kneeL = max(0, s) * 1.1
+                p.kneeR = max(0, -s) * 1.1
+                p.armL = -0.8 * s
+                p.armR = 0.8 * s
+                p.elbowL = 1.4
+                p.elbowR = 1.4
+                p.bodyY += size * 0.03 * abs(s)
+            }
         }
 
         // One-shot gestures chosen by the bot's reply or by a neighbour.

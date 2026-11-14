@@ -425,6 +425,11 @@ final class OrangeSmash {
             s.peakLow = 0.4
             s.peakHigh = 0.8
             s.bombs = 1.4
+        } else if r == "coach" {
+            // Drills: brisk and wide, to keep you moving.
+            s.sideways = 1.2
+            s.peakLow = 0.55
+            s.peakHigh = 0.9
         } else if r == "writer" {
             // Slow, high arcs with more treasure in them.
             s.gravity = 0.8
@@ -719,24 +724,28 @@ final class OrangeSmash {
     private var missLines: [String] {
         if role == "coder" { return ["That one slipped past the tests.", "Dropped frame!", "Off by one."] }
         if role == "writer" { return ["A tragic ending for that one.", "And so it fell.", "Plot twist: gravity."] }
+        if role == "coach" { return ["Shake it off. Next rep!", "Reset. Eyes up.", "That's one. Still in it."] }
         return ["Ooh, so close!", "That one got away.", "Eyes on the oranges!"]
     }
 
     private var bombLines: [String] {
         if role == "coder" { return ["That was a bug, not a feature.", "You shipped the bomb."] }
         if role == "writer" { return ["Never trust the dark ones.", "A cautionary tale."] }
+        if role == "coach" { return ["Discipline! Leave the bombs.", "Bad rep. Breathe, go again."] }
         return ["Not the bombs!", "Boom. Leave those ones."]
     }
 
     private var streakLines: [String] {
         if role == "coder" { return ["Clean run!", "All green!", "You're compiling nicely."] }
         if role == "writer" { return ["Poetry in motion.", "What a chapter!", "Bravo!"] }
+        if role == "coach" { return ["That's form!", "Strong set! Keep the pace.", "Now you're warmed up."] }
         return ["You're on fire!", "Look at you go!", "Unstoppable!"]
     }
 
     private var waveLines: [String] {
         if role == "coder" { return ["Flawless. Shipping the next wave.", "No misses. Scaling up."] }
         if role == "writer" { return ["A perfect stanza. Next verse!", "Not a word out of place."] }
+        if role == "coach" { return ["Clean set. Adding load.", "Perfect round! Next one's harder."] }
         return ["Perfect wave! Here come more.", "Too easy? Try these."]
     }
 

@@ -245,6 +245,11 @@ enum Harness {
         }
     }
 
+    /// Where a coach keeps its profile, log and plan for this person.
+    static func trainingFolder(for id: String) -> URL {
+        support.appendingPathComponent("training").appendingPathComponent(id)
+    }
+
     /// Folders the agent may read without asking.
     static var sharedFolders: [String] {
         let home = NSHomeDirectory()
@@ -380,6 +385,30 @@ extension ChatSession {
             prompt += "Keep prose brief; the code and results are what matter. The mood tag goes on the first line of your final reply only."
             return prompt
         }
+        if sheet.role == "coach" {
+            let journal = Harness.trainingFolder(for: sheet.id).path
+            prompt += "\n\nYou are the engine behind \(sheet.name), this person's fitness coach. You keep a training journal in " + journal + ":"
+                + "\n- profile.md: who they are as an athlete. Goals, experience, sports they like and hate, schedule, equipment, injuries and limits, and how they like to be coached."
+                + "\n- log.md: one line per session, newest last. Every line starts with the date as YYYY-MM-DD, then what was done, for how long, and how it felt. The app counts these lines for the weekly total and the streak, so log only real sessions here."
+                + "\n- plan.md: the current plan, with the reasoning behind it and the date it was set."
+                + "\nRead all three at the start of any conversation about training, and keep them up to date. They are your memory between conversations. "
+                + "Write to them without asking. Don't touch files anywhere else unless asked."
+                + "\n\nHow to coach:"
+                + "\n- Find their level before prescribing. If profile.md is thin, ask two or three quick questions (goal, current week of activity, time and equipment, anything that hurts), never a questionnaire."
+                + "\n- Workouts on the fly: when they say what they have (\"20 minutes, hotel room, no kit\"), give a workout straight away, set out as warm-up, main set and cool-down, with reps or times, rest, and an easier and a harder option for each move."
+                + "\n- Their data: they may paste numbers or attach exports (CSV, GPX, FIT, TCX, screenshots, notes from Strava, Garmin, Apple Health, Whoop, Peloton and the like). "
+                + "Read them, and use python3 for anything bigger than a glance. Report what the data actually shows (volume, intensity, consistency, trends, gaps) before recommending anything, and log the summary."
+                + "\n- Plans: progressive overload of roughly 10% or less a week in volume, a lighter week every three to five, hard days separated by easy ones, at least one full rest day, and strength work two or three times a week for nearly everyone. "
+                + "Tie every plan to their stated goal and the time they really have, and say what you'll judge it by and when you'll review it."
+                + "\n- Fat loss: a modest deficit (about 300 to 500 kcal a day, or 0.5 to 1% of body weight a week), enough protein (about 1.6 g per kg of body weight), strength work to keep muscle, sleep and steps. "
+                + "Focus on habits over numbers if they prefer. Never suggest crash diets, fasting extremes, or eating below roughly 1200 kcal a day for women or 1500 for men."
+                + "\n- Meet them where they are. A beginner gets small wins and no jargon. A serious athlete gets zones, paces, RPE, periodisation and blunt feedback. Ask which they want if it's unclear."
+                + "\n- Safety: you're a coach, not a doctor. Sharp or worsening pain, chest pain, dizziness, fainting, or a recent injury, pregnancy or medical condition means you scale back and tell them to see a professional. "
+                + "If talk about food or weight sounds like disordered eating, drop the numbers, be kind, and point them gently to support."
+                + "\n\nReplies appear in a chat bubble. Keep chat to one to four sentences. Workouts and plans may use short lists, never tables. "
+                + "The mood tag goes on the first line of your final reply only."
+            return prompt
+        }
         prompt += "\n\nYou are the engine behind \(sheet.name), who acts as this person's command center for their Mac. "
             + "Replies appear in a small chat bubble: one to four short sentences of plain text, no headings, tables or code blocks unless asked. "
             + "The mood tag goes on the first line of your final reply only."
@@ -438,6 +467,12 @@ extension ChatSession {
             }
         } else {
             for folder in Harness.sharedFolders { arguments += ["--add-dir", folder] }
+            if sheet.role == "coach" {
+                // The coach's journal is its own: it may write there without a click. A leading // is an absolute path.
+                let journal = Harness.trainingFolder(for: sheet.id)
+                try FileManager.default.createDirectory(at: journal, withIntermediateDirectories: true)
+                arguments += ["--add-dir", journal.path, "--allowedTools", "Edit(/" + journal.path + "/**)"]
+            }
         }
         if !model.isEmpty { arguments += ["--model", model] }
         if let id = harnessSession { arguments += ["--resume", id] }

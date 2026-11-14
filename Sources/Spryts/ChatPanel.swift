@@ -22,8 +22,12 @@ struct ChatView: View {
 
     private var isCoder: Bool { role == "coder" }
     private var isWriter: Bool { role == "writer" }
+    private var isCoach: Bool { role == "coach" }
+    private var isGeneralist: Bool { role == "generalist" }
 
     private var emptyHint: String {
+        if isCoach { return "\(name) is your coach. Ask for a workout, log a session, or click to open the training room." }
+        if !isCoder && !isWriter && !isGeneralist { return "Ask \(name) anything." }
         if isCoder { return "\(name) is the programmer. Click to open the IDE, or ask a quick question about the code here." }
         if isWriter { return "\(name) is the writer. Click to open the studio, or ask for a word, a line or a fix here." }
         return "Ask \(name) to do something on this Mac. Click to open the desk with all your apps."
@@ -144,8 +148,13 @@ struct ChatView: View {
                 projectStrip
             } else if isWriter {
                 writerStrip
-            } else {
+            } else if isCoach {
+                CoachStrip(session: session, journal: TrainingJournal.of(session.sheet.id), tint: tint)
+            } else if isGeneralist {
                 appStrip
+            } else {
+                // A role with no strip of its own shows nothing here. It never borrows another character's.
+                EmptyView()
             }
         }
     }
@@ -435,9 +444,36 @@ struct ChatView: View {
                 coderActions
             } else if isWriter {
                 writerActions
-            } else {
+            } else if isCoach {
+                coachActions
+            } else if isGeneralist {
                 generalActions
             }
+        }
+    }
+
+    private var coachActions: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                chip("20-minute workout") {
+                    session.ask(display: "A 20-minute workout, no kit",
+                                prompt: "Give me a 20-minute workout I can do right now with no equipment. Check my profile and recent log so it fits. Warm-up, main set, cool-down.")
+                }
+                chip("Log a session") {
+                    session.draft = "Log it: "
+                    session.focusTick += 1
+                }
+                chip("How's my week?") {
+                    session.ask(display: "How's my week?",
+                                prompt: "How is my week going against the plan? Numbers first, then what to do with the days left.")
+                }
+                chip("What's today?") {
+                    session.ask(display: "What's today's session?",
+                                prompt: "What does my plan say for today? If there is no plan, suggest one session that fits my recent log.")
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.top, 8)
         }
     }
 
@@ -531,9 +567,17 @@ struct ChatView: View {
         .disabled(session.busy)
     }
 
+    private var placeholder: String {
+        if isCoder { return "Ask \(name) about the code…" }
+        if isWriter { return "Ask \(name) about words…" }
+        if isCoach { return "Tell \(name) how it went, or ask for a session…" }
+        if isGeneralist { return "Ask \(name) or give a command…" }
+        return "Ask \(name)…"
+    }
+
     private var inputRow: some View {
         HStack(spacing: 8) {
-            TextField(isCoder ? "Ask \(name) about the code…" : (isWriter ? "Ask \(name) about words…" : "Ask \(name) or give a command…"), text: $session.draft)
+            TextField(placeholder, text: $session.draft)
                 .textFieldStyle(.plain)
                 .font(.system(size: 13))
                 .focused($typing)
@@ -696,5 +740,37 @@ final class SpeechBubbleController {
         x = min(max(x, screen.minX + 8), screen.maxX - size.width - 8)
         y = max(y, screen.minY + 8)
         panel.setFrameOrigin(NSPoint(x: x, y: y))
+    }
+}
+
+
+/// The coach's strip: this week at a glance, and the way into the training room.
+struct CoachStrip: View {
+    @ObservedObject var session: ChatSession
+    @ObservedObject var journal: TrainingJournal
+    let tint: Color
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "flame.fill").font(.system(size: 13)).foregroundColor(.orange)
+            Text(journal.summary)
+                .font(.system(size: 12, weight: .bold))
+                .lineLimit(1)
+            Spacer()
+            Button(action: { session.onOpenWorkspace?() }) {
+                Text("Training room")
+                    .font(.system(size: 11, weight: .heavy))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(tint.opacity(0.35))
+                    .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
+        .onAppear { journal.reload() }
+        .onChange(of: session.busy) { journal.reload() }
+        .onChange(of: session.showTick) { journal.reload() }
     }
 }
