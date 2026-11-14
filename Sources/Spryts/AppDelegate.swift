@@ -40,6 +40,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var pendingClick: SprytCharacter?
     private var pendingClickTime: CGFloat = 0
     private var hover: [String: CGFloat] = [:]
+    private var frontPopup = ""
     private var away: [String: CGFloat] = [:]
     private var statusItem: NSStatusItem!
     private var timer: Timer?
@@ -231,6 +232,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// What a character does, in a word, for the menu.
+    static func jobName(_ role: String?) -> String {
+        switch role ?? "generalist" {
+        case "generalist": return "your Mac"
+        case "coder": return "code"
+        case "writer": return "writing"
+        case "coach": return "training"
+        case "forecaster": return "your week"
+        default: return role ?? ""
+        }
+    }
+
     /// Roles that have an expanded view built for them.
     static func hasPlace(_ role: String?) -> Bool {
         ["generalist", "coder", "writer", "coach", "forecaster"].contains(role ?? "generalist")
@@ -299,56 +312,69 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem.button?.title = "✦"
         let menu = NSMenu()
+        // One line per character; what you can do with it is inside.
         for (i, character) in characters.enumerated() {
-            let item = NSMenuItem(title: "Talk to " + character.sheet.name, action: #selector(talk(_:)), keyEquivalent: "")
-            item.target = self
-            item.tag = i
-            menu.addItem(item)
-        }
-        for (i, character) in characters.enumerated() where character.sheet.harness != nil && AppDelegate.hasPlace(character.sheet.role) {
-            let item = NSMenuItem(title: "Open " + character.sheet.name + "'s " + AppDelegate.placeName(character.sheet.role), action: #selector(openWorkspaceFromMenu(_:)), keyEquivalent: "")
-            item.target = self
-            item.tag = i
-            menu.addItem(item)
+            let entry = NSMenuItem(title: character.sheet.name + "  ·  " + AppDelegate.jobName(character.sheet.role), action: nil, keyEquivalent: "")
+            let inside = NSMenu()
+            let talkItem = NSMenuItem(title: "Talk", action: #selector(talk(_:)), keyEquivalent: "")
+            talkItem.target = self
+            talkItem.tag = i
+            inside.addItem(talkItem)
+            if character.sheet.harness != nil && AppDelegate.hasPlace(character.sheet.role) {
+                let openItem = NSMenuItem(title: "Open the " + AppDelegate.placeName(character.sheet.role), action: #selector(openWorkspaceFromMenu(_:)), keyEquivalent: "")
+                openItem.target = self
+                openItem.tag = i
+                inside.addItem(openItem)
+            }
+            entry.submenu = inside
+            menu.addItem(entry)
         }
         menu.addItem(NSMenuItem.separator())
+        let summonItem = NSMenuItem(title: "Summon (Control-Option-Space)", action: #selector(summon), keyEquivalent: "")
+        summonItem.target = self
+        menu.addItem(summonItem)
+        let backItem = NSMenuItem(title: "Bring everyone back on stage", action: #selector(bringBack), keyEquivalent: "")
+        backItem.target = self
+        menu.addItem(backItem)
+        let quietItem = NSMenuItem(title: "Quiet mode", action: #selector(toggleQuiet(_:)), keyEquivalent: "")
+        quietItem.target = self
+        menu.addItem(quietItem)
+        let playItem = NSMenuItem(title: "Play Orange Smash", action: #selector(playFromMenu), keyEquivalent: "")
+        playItem.target = self
+        menu.addItem(playItem)
+        menu.addItem(NSMenuItem.separator())
+
+        // Everything you set once and leave alone lives in here.
+        let settingsEntry = NSMenuItem(title: "Settings", action: nil, keyEquivalent: "")
+        let settings = NSMenu()
         let claudeItem = NSMenuItem(title: "Run on Claude Code", action: #selector(chooseEngine(_:)), keyEquivalent: "")
         claudeItem.target = self
         claudeItem.tag = 0
         claudeItem.state = Engine.current == "grok" ? .off : .on
-        menu.addItem(claudeItem)
+        settings.addItem(claudeItem)
         let grokItem = NSMenuItem(title: "Run on Grok", action: #selector(chooseEngine(_:)), keyEquivalent: "")
         grokItem.target = self
         grokItem.tag = 1
         grokItem.state = Engine.current == "grok" ? .on : .off
-        menu.addItem(grokItem)
+        settings.addItem(grokItem)
         engineItems = [claudeItem, grokItem]
         let connectItem = NSMenuItem(title: "Connect in browser…", action: #selector(connectClaude), keyEquivalent: "")
         connectItem.target = self
-        menu.addItem(connectItem)
-        let playItem = NSMenuItem(title: "Play Orange Smash", action: #selector(playFromMenu), keyEquivalent: "")
-        playItem.target = self
-        menu.addItem(playItem)
-        let summonItem = NSMenuItem(title: "Summon (Control-Option-Space)", action: #selector(summon), keyEquivalent: "")
-        summonItem.target = self
-        menu.addItem(summonItem)
+        settings.addItem(connectItem)
+        settings.addItem(NSMenuItem.separator())
         let speakItem = NSMenuItem(title: "Let them speak first", action: #selector(toggleSpeakFirst(_:)), keyEquivalent: "")
         speakItem.target = self
         speakItem.state = .on
-        menu.addItem(speakItem)
-        let quietItem = NSMenuItem(title: "Quiet mode", action: #selector(toggleQuiet(_:)), keyEquivalent: "")
-        quietItem.target = self
-        menu.addItem(quietItem)
-        let backItem = NSMenuItem(title: "Bring everyone back on stage", action: #selector(bringBack), keyEquivalent: "")
-        backItem.target = self
-        menu.addItem(backItem)
+        settings.addItem(speakItem)
+        settings.addItem(NSMenuItem.separator())
         let resetItem = NSMenuItem(title: "Reset \"Always allow\" choices", action: #selector(resetAlwaysAllow), keyEquivalent: "")
         resetItem.target = self
-        menu.addItem(resetItem)
+        settings.addItem(resetItem)
         let forgetItem = NSMenuItem(title: "Forget chats and memories", action: #selector(forgetAll), keyEquivalent: "")
         forgetItem.target = self
-        menu.addItem(forgetItem)
-        menu.addItem(NSMenuItem.separator())
+        settings.addItem(forgetItem)
+        settingsEntry.submenu = settings
+        menu.addItem(settingsEntry)
         let quit = NSMenuItem(title: "Quit Spryts", action: #selector(quitApp), keyEquivalent: "q")
         quit.target = self
         menu.addItem(quit)
@@ -540,7 +566,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if over { overAny = true }
             // A character in the wings takes clicks but doesn't open its popup on hover.
             hover[id] = over && !character.isOffstage ? (hover[id] ?? 0) + dt : 0
-            let engaged = (hover[id] ?? 0) >= 0.15
+            let engaged = (hover[id] ?? 0) >= 0.3   // long enough that passing over a character doesn't open it
 
             // One window per character: while its big window is open, the small popup stays away.
             let expanded = workspaces[id]?.isOpen ?? false
@@ -548,11 +574,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if (engaged || character.session.approval != nil) && !panel.isVisible && !dragging && !expanded {
                 panel.show()
                 character.noteInteraction()
+                // One popup at a time: opening this one closes the others, unless pinned or waiting on an answer.
+                frontPopup = id
+                for other in characters where other.sheet.id != id {
+                    if other.session.pinned || other.session.approval != nil { continue }
+                    if let otherPanel = panels[other.sheet.id], otherPanel.isVisible { otherPanel.hide() }
+                }
             }
             if panel.isVisible {
                 let inPanel = panel.frame.insetBy(dx: -14, dy: -14).contains(mouse)
                 let fresh = Date().timeIntervalSince(character.session.lastEvent) < 15
-                let keep = over || inPanel || character.session.pinned || character.session.busy || panel.isKey || fresh
+                // Only the popup you opened last stays up while its character works.
+                let front = frontPopup == id
+                let keep = over || inPanel || character.session.pinned || (character.session.busy && front) || panel.isKey || (fresh && front)
                     || character.session.approval != nil
                 if keep {
                     away[id] = 0

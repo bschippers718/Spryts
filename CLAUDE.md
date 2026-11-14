@@ -25,6 +25,21 @@ Only Pip (the generalist) has the apps, the desk and the Mac-control actions.
 
 Roles so far: `generalist` (Pip, desk), `coder` (Nova, IDE), `writer` (Ember, studio), `coach` (Rally, training room).
 
+## Keep it calm
+
+The screen belongs to the person's work. Every addition must leave it no busier than before.
+
+- **Popup header:** name, a stop button while working, and the ⋯ menu. Nothing else. New actions go in the ⋯ menu
+  or in the character's big window, never as another header icon.
+- **Popup body:** one strip under the header, the conversation, then one row: shortcuts when idle, or the game offer
+  on a long task, or an approval card. Never two of those at once. Progress is one live line; the full step list
+  belongs in the big window.
+- **One popup at a time,** and none while that character's big window is open.
+- **✦ menu:** one line per character, the few everyday actions, then Settings. Anything set once and left alone goes
+  in Settings.
+- **The stage:** fidgets slow down as more characters are on stage, and only one character-to-character exchange
+  happens at a time, minutes apart. A new behaviour must fit inside those budgets, not add to them.
+
 ## Two engines, one set of characters
 
 Every character can run on Claude Code or on Grok (the `grok` command-line agent); the ✦ menu switches all of them.

@@ -92,7 +92,7 @@ struct ChatView: View {
         if ask.count > 70 { ask = String(ask.prefix(70)) + "…" }
         if ask.isEmpty { return nil }
         if session.approval != nil { return "Waiting for your OK: " + ask }
-        return (session.busy ? "Working on: " : "Last asked: ") + ask
+        return session.busy ? "Working on: " + ask : nil
     }
 
     private var header: some View {
@@ -109,11 +109,11 @@ struct ChatView: View {
         .padding(.vertical, 10)
     }
 
+    /// The header stays quiet: who this is, a stop button while it works, and one menu for everything else.
     private var headerRow: some View {
         HStack(spacing: 8) {
             Circle().fill(tint).frame(width: 10, height: 10)
             Text(name).font(.system(size: 13, weight: .semibold))
-            Text(session.providerLabel + " · " + session.modelLabel).font(.system(size: 11)).foregroundColor(.secondary)
             Spacer()
             if session.busy {
                 Button(action: { session.stop() }) {
@@ -122,26 +122,52 @@ struct ChatView: View {
                 .buttonStyle(.plain)
                 .help("Stop")
             }
-            if session.onPlay != nil {
-                Button(action: { session.onPlay?() }) {
-                    Image(systemName: "gamecontroller.fill")
+            if session.pinned {
+                Button(action: { session.pinned = false }) {
+                    Image(systemName: "pin.fill")
                 }
                 .buttonStyle(.plain)
-                .help("Play Orange Smash")
+                .help("Unpin")
             }
-            if session.onOpenWorkspace != nil {
-                Button(action: { session.onOpenWorkspace?() }) {
-                    Image(systemName: "macwindow")
-                }
-                .buttonStyle(.plain)
-                .help("Open the workspace")
-            }
-            Button(action: { session.pinned.toggle() }) {
-                Image(systemName: session.pinned ? "pin.fill" : "pin")
-            }
-            .buttonStyle(.plain)
-            .help(session.pinned ? "Unpin" : "Keep open")
+            moreMenu
         }
+    }
+
+    /// Things you reach for now and then: the big window, pinning, a game, the model, a fresh start.
+    private var moreMenu: some View {
+        Menu {
+            if session.onOpenWorkspace != nil {
+                Button("Open the " + AppDelegate.placeName(role)) { session.onOpenWorkspace?() }
+            }
+            Button(session.pinned ? "Unpin" : "Keep this open") { session.pinned.toggle() }
+            if session.onPlay != nil {
+                Button("Play Orange Smash") { session.onPlay?() }
+            }
+            Divider()
+            if session.modelChoices.count > 1 {
+                Menu("Model: " + session.modelLabel) {
+                    ForEach(session.modelChoices, id: \.id) { choice in
+                        Button(action: { session.model = choice.id }) {
+                            if choice.id == session.model {
+                                Label(choice.label, systemImage: "checkmark")
+                            } else {
+                                Text(choice.label)
+                            }
+                        }
+                    }
+                }
+            }
+            Button("New conversation") { session.newConversation() }
+                .disabled(session.busy)
+            Divider()
+            Text(session.providerLabel)
+        } label: {
+            Image(systemName: "ellipsis.circle")
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("More")
     }
 
     /// The strip under the header is where each role differs: apps for the generalist, the project for the programmer.
@@ -295,8 +321,8 @@ struct ChatView: View {
                     ForEach(visibleMessages) { message in
                         bubble(message).id(message.id)
                     }
-                    if !session.steps.isEmpty {
-                        stepList.id("steps")
+                    if session.busy, let step = session.steps.last {
+                        liveStep(step, count: session.steps.count).id("steps")
                     }
                     Color.clear.frame(height: 1).id("end")
                 }
@@ -317,6 +343,28 @@ struct ChatView: View {
                 proxy.scrollTo("end", anchor: .bottom)
             }
         }
+    }
+
+    /// What the agent is doing right now, in one line.
+    private func liveStep(_ step: AgentStep, count: Int) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: stepIcon(step.state))
+                .font(.system(size: 10))
+                .foregroundColor(stepColor(step.state))
+                .frame(width: 12)
+            Text(step.detail.isEmpty ? step.tool : step.detail)
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundColor(.secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+            Spacer(minLength: 0)
+            if count > 1 {
+                Text("step \(count)").font(.system(size: 10)).foregroundColor(.secondary)
+            }
+        }
+        .padding(8)
+        .background(Color.primary.opacity(0.05))
+        .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
     }
 
     /// What the agent has done so far in this task.
@@ -445,19 +493,23 @@ struct ChatView: View {
             if session.sheet.harness != nil && connector.needsConnecting {
                 ConnectCard(name: name, tint: tint)
             }
-            if session.busy && session.onPlay != nil {
-                playRow
-            }
-            if isCoder {
-                coderActions
-            } else if isWriter {
-                writerActions
-            } else if isCoach {
-                coachActions
-            } else if isForecaster {
-                forecasterActions
-            } else if isGeneralist {
-                generalActions
+            if session.busy {
+                // Shortcuts are no use mid-task. On a long task, offer the game instead.
+                if session.onPlay != nil && session.steps.count >= 2 && session.approval == nil {
+                    playRow
+                }
+            } else if session.approval == nil {
+                if isCoder {
+                    coderActions
+                } else if isWriter {
+                    writerActions
+                } else if isCoach {
+                    coachActions
+                } else if isForecaster {
+                    forecasterActions
+                } else if isGeneralist {
+                    generalActions
+                }
             }
         }
     }

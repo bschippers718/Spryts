@@ -89,6 +89,7 @@ final class SprytCharacter {
     private var lastDrill = 0
     /// The order characters left the stage in, so the ones in the wings can stack up tidily.
     private static var offCounter = 0
+    private static var nextSocialAllowed = Date().addingTimeInterval(60)
     private var offOrder = 0
     private(set) var petting = false
     private(set) var mode: Mode = .falling
@@ -791,6 +792,11 @@ return CGRect(x: pos.x - H * 0.45, y: pos.y + altitude - 4, width: H * 0.9, heig
 
         socialClock += dt
         if quiet || playing || socialClock < nextSocial || !isFree { return }
+        // One exchange at a time across the whole stage, a few minutes apart, however many characters there are.
+        if Date() < SprytCharacter.nextSocialAllowed {
+            socialClock = nextSocial - 8
+            return
+        }
         let H = body.height
         let free = others.filter { $0 !== self && $0.isFree && !$0.playing && abs($0.pos.x - pos.x) > H }
         guard let other = free.randomElement() else {
@@ -799,6 +805,7 @@ return CGRect(x: pos.x - H * 0.45, y: pos.y + altitude - 4, width: H * 0.9, heig
         }
         socialClock = 0
         nextSocial = CGFloat.random(in: 60...150)
+        SprytCharacter.nextSocialAllowed = Date().addingTimeInterval(Double.random(in: 150...300))
         facing = other.pos.x >= pos.x ? 1 : -1
         if mode == .sitting { setMode(.idle) }
         idleFor = max(idleFor, 4)
@@ -1528,7 +1535,9 @@ return CGRect(x: pos.x - H * 0.45, y: pos.y + altitude - 4, width: H * 0.9, heig
         // Medium gestures: about once a minute, only when there is nothing else to do.
         if mode == .idle && activity == .none && gestureTime <= 0 && !attention && peekTime <= 0 {
             if fidget == 0 {
-                nextFidget -= dt
+                // The more characters on stage, the less often each one fidgets, so the screen as a whole stays calm.
+                let crowd = max(1, CGFloat(others.filter { !$0.isOffstage }.count) / 2)
+                nextFidget -= dt / crowd
                 if nextFidget <= 0 {
                     if isCoach && CGFloat.random(in: 0...1) < 0.6 {
                         // The coach practises what it preaches: a short set of something, never the same twice running.
