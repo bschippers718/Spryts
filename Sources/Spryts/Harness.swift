@@ -33,6 +33,13 @@ struct Approval: Identifiable, Equatable {
     let path: String      // the file an edit touches, if any
     let command: String   // the shell command, if any
 
+    /// What "always allow" would cover, in a few words for the button.
+    var grantLabel: String {
+        if grantKey.hasPrefix("Bash:") { return "`" + String(grantKey.dropFirst(5)) + "` commands" }
+        if tool == "Edit" || tool == "Write" || tool == "MultiEdit" { return "file edits" }
+        return tool
+    }
+
     init(id: String, sessionID: String, tool: String, input: [String: Any]) {
         self.path = input["file_path"] as? String ?? input["path"] as? String ?? input["target_file"] as? String ?? ""
         self.command = (input["command"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
@@ -706,7 +713,8 @@ throw HarnessFailure(message: grok
     // MARK: Approvals
 
     func request(_ item: Approval) {
-        if item.auto || (!item.danger && taskGrants.contains(item.grantKey)) || (engine == "grok" && grokAllows(item)) {
+if item.auto || (!item.danger && (taskGrants.contains(item.grantKey) || alwaysGrants.contains(item.grantKey)))
+            || (engine == "grok" && grokAllows(item)) {
             Harness.answer(item.id, allow: true)
             return
         }
@@ -724,10 +732,25 @@ throw HarnessFailure(message: grok
         onEvent?(.needsApproval)
     }
 
-    func decide(allow: Bool, forTask: Bool) {
+    /// Kinds of action this character may always take without asking, kept between launches.
+    /// Risky actions (deleting, sending, pushing and the like) are never remembered, whatever is clicked.
+    var alwaysGrants: Set<String> {
+        get { Set(UserDefaults.standard.stringArray(forKey: "alwaysAllow." + sheet.id) ?? []) }
+        set { UserDefaults.standard.set(Array(newValue).sorted(), forKey: "alwaysAllow." + sheet.id) }
+    }
+
+    func decide(allow: Bool, forTask: Bool, always: Bool = false) {
         guard let item = approval else { return }
         Harness.answer(item.id, allow: allow)
         if allow && forTask && !item.danger { taskGrants.insert(item.grantKey) }
+        if allow && always && !item.danger {
+            alwaysGrants.insert(item.grantKey)
+            Harness.log("always allow: \(sheet.id) \(item.grantKey)")
+            // Anything of the same kind already waiting goes through too.
+            let waiting = approvalQueue.filter { !$0.danger && $0.grantKey == item.grantKey }
+            for other in waiting { Harness.answer(other.id, allow: true) }
+            approvalQueue.removeAll(where: { !$0.danger && $0.grantKey == item.grantKey })
+        }
         lastEvent = Date()
         onEvent?(allow ? .tool(item.tool) : .thinking)
         nextApproval()

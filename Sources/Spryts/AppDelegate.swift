@@ -342,6 +342,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let backItem = NSMenuItem(title: "Bring everyone back on stage", action: #selector(bringBack), keyEquivalent: "")
         backItem.target = self
         menu.addItem(backItem)
+        let resetItem = NSMenuItem(title: "Reset \"Always allow\" choices", action: #selector(resetAlwaysAllow), keyEquivalent: "")
+        resetItem.target = self
+        menu.addItem(resetItem)
         let forgetItem = NSMenuItem(title: "Forget chats and memories", action: #selector(forgetAll), keyEquivalent: "")
         forgetItem.target = self
         menu.addItem(forgetItem)
@@ -421,6 +424,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func bringBack() {
         for character in characters { character.returnToStage(world: world, others: characters) }
+    }
+
+    /// Goes back to asking: clears everything saved with the "Always allow" button, for every character.
+    @objc private func resetAlwaysAllow() {
+        for character in characters { character.session.alwaysGrants = [] }
     }
 
     @objc private func forgetAll() {

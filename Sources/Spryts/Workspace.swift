@@ -857,7 +857,10 @@ struct ApprovalCardView: View {
                 Button("Deny") { session.decide(allow: false, forTask: false) }
                 Spacer()
                 if !approval.danger {
-                    Button("Allow for this task") { session.decide(allow: true, forTask: true) }
+                    Button("Always allow") { session.decide(allow: true, forTask: true, always: true) }
+                        .help("Never ask \(name) again about " + approval.grantLabel + ". Risky actions still ask.")
+                    Button("This task") { session.decide(allow: true, forTask: true) }
+                        .help("Allow " + approval.grantLabel + " until this task is finished.")
                 }
                 Button("Allow once") { session.decide(allow: true, forTask: false) }
                     .keyboardShortcut(.defaultAction)
