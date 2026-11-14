@@ -485,7 +485,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             hover[id] = over && !character.isOffstage ? (hover[id] ?? 0) + dt : 0
             let engaged = (hover[id] ?? 0) >= 0.15
 
-            if (engaged || character.session.approval != nil) && !panel.isVisible && !dragging {
+            // One window per character: while its big window is open, the small popup stays away.
+            let expanded = workspaces[id]?.isOpen ?? false
+            if expanded && panel.isVisible { panel.hide() }
+            if (engaged || character.session.approval != nil) && !panel.isVisible && !dragging && !expanded {
                 panel.show()
                 character.noteInteraction()
             }
@@ -512,7 +515,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if let bubble = bubbles[id] {
                 if let line = character.pendingSpeech {
                     character.pendingSpeech = nil
-                    if !panel.isVisible { bubble.say(line) }
+                    if !panel.isVisible && !expanded { bubble.say(line) }
                 }
                 if panel.isVisible && bubble.isVisible { bubble.hide() }
                 bubble.tick(dt: dt, anchor: character.hitRect, screen: world.frame)

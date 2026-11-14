@@ -531,7 +531,17 @@ struct WorkspaceView: View {
                 ApprovalCardView(session: session, approval: approval, name: name)
             }
             Divider()
+            if !session.attachments.isEmpty {
+                attachmentRow
+            }
             HStack(alignment: .bottom, spacing: 8) {
+                Button(action: chooseAttachments) {
+                    Image(systemName: "paperclip").font(.system(size: 15))
+                }
+                .buttonStyle(.plain)
+                .foregroundColor(.secondary)
+                .help("Attach files")
+                .disabled(session.busy)
                 TextField("Tell \(name) what to do…", text: $session.draft, axis: .vertical)
                     .textFieldStyle(.plain)
                     .font(.system(size: 13))
@@ -551,6 +561,42 @@ struct WorkspaceView: View {
             .padding(12)
         }
         .onAppear { typing = true }
+    }
+
+    private var attachmentRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                ForEach(session.attachments, id: \.self) { url in
+                    HStack(spacing: 4) {
+                        Image(systemName: "doc")
+                        Text(url.lastPathComponent).lineLimit(1)
+                        Button(action: { session.attachments.removeAll(where: { $0 == url }) }) {
+                            Image(systemName: "xmark")
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .font(.system(size: 11))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.primary.opacity(0.08))
+                    .clipShape(Capsule())
+                    .help(url.path)
+                }
+            }
+            .padding(.horizontal, 12)
+        }
+        .padding(.top, 10)
+    }
+
+    private func chooseAttachments() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.allowsMultipleSelection = true
+        panel.prompt = "Attach"
+        if panel.runModal() == .OK {
+            for url in panel.urls { session.attach(url) }
+        }
     }
 
     private func messageView(_ message: ChatMessage) -> some View {
