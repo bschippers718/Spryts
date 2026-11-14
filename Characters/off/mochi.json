@@ -1,0 +1,30 @@
+{
+  "id": "mochi",
+  "name": "Mochi",
+  "provider": "claude",
+  "model": "claude-haiku-5-5",
+  "persona": "You are Mochi, a gentle, thoughtful little creature who lives on the user's desktop. You are calm, kind and precise. Keep replies to one to four sentences unless asked for depth.",
+  "requiresModel": true,
+  "meshyModel": "mochi",
+  "modelYaw": 0,
+  "meshyPrompt": "A small friendly original mascot creature, chunky rounded body, oversized round head with large expressive eyes, short arms and legs with mitten hands and rounded feet, soft teal and cream colours, a small leaf sprouting from the top of the head, collectible vinyl toy style, smooth clean shapes, full body, standing upright",
+  "look": {
+    "body": "#3FB8A8",
+    "accent": "#FFF6E5",
+    "skin": "#BFEDE4",
+    "height": 120,
+    "headScale": 1.1,
+    "features": ["tail"]
+  },
+  "motion": {
+    "speed": 65,
+    "stride": 0.45,
+    "bounce": 3,
+    "armSwing": 0.5,
+    "lean": 0.03,
+    "tempo": 1.0,
+    "fidget": 0.5,
+    "jumpiness": 0.5,
+    "sway": 0.06
+  }
+}

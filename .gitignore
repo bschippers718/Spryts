@@ -1,0 +1,5 @@
+.env
+.build/
+*.log
+Characters/models/
+.DS_Store
