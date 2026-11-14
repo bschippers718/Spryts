@@ -131,8 +131,10 @@ final class FocusKeeper: ObservableObject {
         return nil
     }
 
+    /// Looked up in the workspace's list, the same one a capture reads. `runningApplications(withBundleIdentifier:)`
+    /// missed running apps (Xcode, Notes) when tested from the command line, so it isn't used.
     private static func runningApp(_ id: String) -> NSRunningApplication? {
-        NSRunningApplication.runningApplications(withBundleIdentifier: id).first
+        NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == id })
     }
 
     private static func ordinaryApps() -> [NSRunningApplication] {
@@ -370,7 +372,8 @@ final class FocusKeeper: ObservableObject {
     /// Opens what was open: shows hidden apps, relaunches quit ones, reopens documents and tabs that aren't open.
     /// Says plainly what it couldn't bring back.
     func restore(_ context: SavedContext) async -> String {
-        var shown = 0, launched = 0, documents = 0, tabs = 0
+        var shownNames: [String] = [], launchedNames: [String] = []
+        var documents = 0, tabs = 0
         var missing: [String] = []
         let config = NSWorkspace.OpenConfiguration()
         config.activates = false
@@ -382,14 +385,14 @@ final class FocusKeeper: ObservableObject {
                 wasRunning = true
                 if !app.hidden && running.isHidden {
                     running.unhide()
-                    shown += 1
+                    shownNames.append(app.name)
                 }
             } else if let appURL {
                 let launch = NSWorkspace.OpenConfiguration()
                 launch.activates = false
                 launch.hides = app.hidden
                 if (try? await NSWorkspace.shared.openApplication(at: appURL, configuration: launch)) != nil {
-                    launched += 1
+                    launchedNames.append(app.name)
                 } else {
                     missing.append(app.name)
                     continue
@@ -425,8 +428,8 @@ final class FocusKeeper: ObservableObject {
         if let frontID, let running = Self.runningApp(frontID) { await Self.bringForward(running) }
 
         var parts: [String] = []
-        if shown > 0 { parts.append("showed \(shown) app\(shown == 1 ? "" : "s")") }
-        if launched > 0 { parts.append("reopened \(launched) app\(launched == 1 ? "" : "s")") }
+        if !shownNames.isEmpty { parts.append("showed " + shownNames.joined(separator: ", ")) }
+        if !launchedNames.isEmpty { parts.append("reopened " + launchedNames.joined(separator: ", ")) }
         if documents > 0 { parts.append("\(documents) document\(documents == 1 ? "" : "s")") }
         if tabs > 0 { parts.append("\(tabs) tab\(tabs == 1 ? "" : "s")") }
         var text = parts.isEmpty ? "Everything from \"\(context.name)\" was already open." : "Put back \"\(context.name)\": " + parts.joined(separator: ", ") + "."
