@@ -102,8 +102,9 @@ enum Harness {
         shell.standardInput = FileHandle.nullDevice
         do {
             try shell.run()
+            // Reading to the end waits for the shell without spinning the run loop. Waiting on the process
+            // itself would let the interface redraw mid-lookup, ask for this same value, and deadlock.
             let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            shell.waitUntilExit()
             let found = (String(data: data, encoding: .utf8) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             if found.hasPrefix("/") && FileManager.default.isExecutableFile(atPath: found) { return found }
         } catch {
