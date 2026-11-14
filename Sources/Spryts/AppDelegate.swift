@@ -32,6 +32,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var characters: [SprytCharacter] = []
     private var panels: [String: ChatPanelController] = [:]
     private var bubbles: [String: SpeechBubbleController] = [:]
+    private var weatherDrops: [String: WeatherDropController] = [:]   // the forecaster's four-day sky, toggled by a click
     private let shelf = AppShelf()
     private var hotKey: HotKey?
     private var seenRequests: Set<String> = []
@@ -141,7 +142,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             characters.append(character)
             panels[sheet.id] = ChatPanelController(session: character.session, sheet: sheet, shelf: shelf)
             let apps = shelf
-            character.session.contextProvider = { apps.context }
+            character.session.contextProvider = { apps.context + FocusKeeper.contextNote() }
             if (sheet.role ?? "generalist") == "generalist" {
                 character.session.onTaskFinished = { ask, done in
                     apps.note(ask, mentioning: ask + " " + done)
@@ -158,6 +159,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 Task { @MainActor [weak self] in self?.startGame(playID) }
             }
             bubbles[sheet.id] = SpeechBubbleController()
+            if sheet.role == "forecaster" { weatherDrops[sheet.id] = WeatherDropController(id: sheet.id) }
             hover[sheet.id] = 0
             away[sheet.id] = 0
             index += 1
@@ -196,6 +198,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 controller = WorkspaceWindowController(session: character.session, sheet: character.sheet)
             case "writer":
                 controller = StudioWindowController(session: character.session, sheet: character.sheet)
+            case "forecaster":
+                controller = ForecastRoomController(session: character.session, sheet: character.sheet)
             case "coach":
                 controller = TrainingRoomController(session: character.session, sheet: character.sheet)
             case "generalist":
@@ -222,13 +226,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case "coder": return "IDE"
         case "writer": return "studio"
         case "coach": return "training room"
+        case "forecaster": return "forecast room"
         default: return "desk"
         }
     }
 
     /// Roles that have an expanded view built for them.
     static func hasPlace(_ role: String?) -> Bool {
-        ["generalist", "coder", "writer", "coach"].contains(role ?? "generalist")
+        ["generalist", "coder", "writer", "coach", "forecaster"].contains(role ?? "generalist")
     }
 
     @objc private func openWorkspaceFromMenu(_ sender: NSMenuItem) {
@@ -445,7 +450,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             pendingClickTime -= dt
             if pendingClickTime <= 0 {
                 pendingClick = nil
-                openWorkspace(waiting.sheet.id)
+                if let drop = weatherDrops[waiting.sheet.id] {
+                    // The forecaster's click shows the real sky; its room opens from the popup or the ✦ menu.
+                    drop.toggle()
+                } else {
+                    openWorkspace(waiting.sheet.id)
+                }
             }
         }
 
@@ -485,6 +495,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let hour = Calendar.current.component(.hour, from: Date())
             night = hour >= 22 || hour < 6
             if idleSeconds > 120 {
+                // The moment they step away, remember what was open, for "Where was I?" later.
+                if !isAway { FocusKeeper.shared.snapshotAway() }
                 isAway = true
                 awayFor = idleSeconds
             } else if isAway && idleSeconds < 3 {
@@ -556,6 +568,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
                 if panel.isVisible && bubble.isVisible { bubble.hide() }
                 bubble.tick(dt: dt, anchor: character.hitRect, screen: world.frame)
+            }
+            if let drop = weatherDrops[id] {
+                if character.mode == .held || character.mode == .offstage { drop.hide() }
+                drop.tick(anchor: character.hitRect, screen: world.frame)
             }
         }
         if let game {

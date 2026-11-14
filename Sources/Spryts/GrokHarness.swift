@@ -168,6 +168,9 @@ extension ChatSession {
         if sheet.role == "coach" {
             try FileManager.default.createDirectory(at: Harness.trainingFolder(for: sheet.id), withIntermediateDirectories: true)
         }
+        if sheet.role == "forecaster" {
+            try FileManager.default.createDirectory(at: Harness.forecastFolder(for: sheet.id), withIntermediateDirectories: true)
+        }
         if model.hasPrefix("grok-") && model != "grok-default" { arguments += ["-m", model] }
         return arguments
     }
@@ -179,10 +182,13 @@ extension ChatSession {
             if item.path.isEmpty { return false }
             let path = URL(fileURLWithPath: item.path).standardizedFileURL.path
             if sheet.role == "coach" && path.hasPrefix(Harness.trainingFolder(for: sheet.id).standardizedFileURL.path + "/") { return true }
+            if sheet.role == "forecaster" && path.hasPrefix(Harness.forecastFolder(for: sheet.id).standardizedFileURL.path + "/") { return true }
             if sheet.role == "coder", let folder = projectFolder, path.hasPrefix(folder.standardizedFileURL.path + "/") { return true }
             return false
         }
         if item.tool == "Bash" {
+            // The same few commands Claude Code runs without a click: switching apps, and Pip's focus tools.
+            if item.auto { return true }
             if sheet.role != "coder" || projectFolder == nil { return false }
             let command = item.command
             if [";", "|", "&", ">", "<", "$(", "`"].contains(where: { command.contains($0) }) { return false }

@@ -74,6 +74,13 @@ final class SprytCharacter {
     /// The programmer is studious and calm; the generalist is playful. The role decides which.
     private var isCoder: Bool { sheet.role == "coder" }
     private var isWriter: Bool { sheet.role == "writer" }
+    private var isForecaster: Bool { sheet.role == "forecaster" }
+    /// A floater (the cloud) has no weight: it stays at whatever height it is put, anywhere on the screen.
+    private var isFloater: Bool { body is CloudBody }
+    /// How far above the ground a floater hangs. Its feet stay on the ground for the rest of the behaviour.
+    private var altitude: CGFloat = 0
+    private var heldLift: CGFloat = 0
+    private var altitudeSet = false
     /// The specialists are absorbed in their craft; only the generalist plays.
     private var isSpecialist: Bool { isCoder || isWriter }
     private var isCoach: Bool { sheet.role == "coach" }
@@ -201,6 +208,7 @@ final class SprytCharacter {
         self.session = ChatSession(sheet: sheet)
 
         var chosen: CharacterBody = ProceduralBody(look: sheet.look)
+        if sheet.look.features.contains("cloud") { chosen = CloudBody(look: sheet.look) }
         if let modelName = sheet.meshyModel,
            let model = ModelBody(folder: Config.modelFolder(modelName), height: sheet.look.height, yawOffset: sheet.modelYaw ?? 0) {
             chosen = model
@@ -234,6 +242,10 @@ final class SprytCharacter {
             let width = H * 0.7
             let x = offSide < 0 ? stageFrame.minX : stageFrame.maxX - width
             return CGRect(x: x, y: pos.y - 4, width: width, height: H * 1.05)
+        }
+        if body is CloudBody {
+            // The cloud is wide and floats high, so its clickable area is too.
+return CGRect(x: pos.x - H * 0.45, y: pos.y + altitude - 4, width: H * 0.9, height: H * 1.4)
         }
         return CGRect(x: pos.x - H * 0.32, y: pos.y - 4, width: H * 0.64, height: H * 1.02)
     }
@@ -550,7 +562,7 @@ final class SprytCharacter {
 
     /// Roughly where the throwing hand is, in screen points.
     var handPoint: CGPoint {
-        CGPoint(x: pos.x + facing * body.height * 0.3, y: pos.y + body.height * 0.8)
+        CGPoint(x: pos.x + facing * body.height * 0.3, y: pos.y + altitude + body.height * 0.8)
     }
 
     /// A quick overarm swing as something leaves the hand.
@@ -697,6 +709,7 @@ final class SprytCharacter {
         if role == "coder" { lines += ["Hey \(n), all systems go?", "\(n)! Nice work today."] }
         if role == "writer" { lines += ["\(n), you brighten the whole screen.", "So good to see you, \(n)."] }
         if role == "coach" { lines += ["\(n)! Stretched today?", "Lap of the screen, \(n)? Easy pace.", "Hydrating, \(n)?"] }
+        if role == "forecaster" { lines += ["\(n), clear skies over here.", "Light showers on my side, \(n).", "Any rain where you are, \(n)?"] }
         return lines.randomElement() ?? "Hey \(n)!"
     }
 
@@ -704,6 +717,7 @@ final class SprytCharacter {
         if role == "coder" { return ["Affirmative!", "Ha. Compiling, as ever.", "All good. You're the best."].randomElement() ?? "Yes!" }
         if role == "writer" { return ["Oh, delightfully so.", "You do say the nicest things.", "Ha! Likewise, friend."].randomElement() ?? "Yes!" }
         if role == "coach" { return ["Feeling strong!", "Ha! Personal best day.", "Always. Good form, by the way."].randomElement() ?? "Yes!" }
+        if role == "forecaster" { return ["Ninety percent sure, yes.", "Clearing up, I'd say.", "Oh, absolutely. Bring a coat anyway."].randomElement() ?? "Yes!" }
         return ["Ha! Always.", "You know it!", "Aw, thanks for checking in."].randomElement() ?? "Yes!"
     }
 
@@ -844,11 +858,15 @@ final class SprytCharacter {
         errand = .none
         buddy = nil
         pendingFlee = false
+        // A floater is picked up from where it hangs, not from the ground below it.
+        heldLift = altitude
+        altitude = 0
+        pos.y += heldLift
         setMode(.held)
     }
 
     func drag(to p: CGPoint, dx: CGFloat) {
-        pos = p
+        pos = CGPoint(x: p.x, y: p.y + heldLift)
         dangleVel += clamp(dx * 0.03, -2, 2)
     }
 
@@ -899,6 +917,24 @@ final class SprytCharacter {
             goOffstage(side: pos.x < stageFrame.midX ? -1 : 1)
             return
         }
+        if isFloater {
+            // Let go of a cloud and it stays right there.
+            let floor = lastWorld?.floorY ?? stageFrame.minY
+            let ceiling = max(0, stageFrame.maxY - floor - body.height * 1.5)
+            altitude = clamp(pos.y - floor, 0, ceiling)
+            UserDefaults.standard.set(Double(altitude), forKey: "altitude." + sheet.id)
+            altitudeSet = true
+            heldLift = 0
+            pos.y = floor
+            platformID = 0
+            vel = CGVector(dx: 0, dy: 0)
+            thrown = false
+            tumbling = false
+            roll = 0
+            idleFor = 3
+            setMode(.idle)
+            return
+        }
         vel = CGVector(dx: clamp(velocity.dx, -1600, 1600), dy: clamp(velocity.dy, -1400, 1800))
         tumbling = hypot(vel.dx, vel.dy) > 900 && abs(vel.dx) > 250
         let spinWay: CGFloat = vel.dx >= 0 ? -1 : 1
@@ -928,6 +964,17 @@ final class SprytCharacter {
         let m = sheet.motion
         lastWorld = world
         stageFrame = world.frame
+        if isFloater && !altitudeSet && world.frame.height > 0 {
+            // Where it was last left; the first time, well up off the Dock where it can be seen.
+            altitudeSet = true
+            let ceiling = max(0, world.frame.maxY - world.floorY - body.height * 1.5)
+            if UserDefaults.standard.object(forKey: "altitude." + sheet.id) != nil {
+                altitude = clamp(CGFloat(UserDefaults.standard.double(forKey: "altitude." + sheet.id)), 0, ceiling)
+            } else {
+                altitude = min(ceiling, world.frame.height * 0.3)
+            }
+        }
+        if mode == .offstage { altitude = 0 }
         workTime += dt
         nextBig -= dt
         if mode == .idle || mode == .sitting || mode == .napping { sinceMoved += dt }
@@ -1491,6 +1538,13 @@ final class SprytCharacter {
                         lastDrill = next
                         hobbyTime = CGFloat.random(in: 5...8)
                         nextFidget = hobbyTime + CGFloat.random(in: 15...35)
+                    } else if isForecaster {
+                        // A cloud drifts: slow, sideways, looking up at the weather. Never a jump.
+                        let pool = [1, 13, 17, 19, 24, 25]
+                        let quietOnes = pool.filter { !fidgetHistory.contains($0) }
+                        fidget = quietOnes.randomElement() ?? 1
+                        fidgetHistory.append(fidget)
+                        if fidgetHistory.count > 3 { fidgetHistory.removeFirst(fidgetHistory.count - 3) }
                     } else if isSpecialist {
                         if Bool.random() {
                             // Their own time: the programmer types or reads; the writer scribbles or reads.
@@ -1507,7 +1561,7 @@ final class SprytCharacter {
                             if fidgetHistory.count > 3 { fidgetHistory.removeFirst(fidgetHistory.count - 3) }
                         }
                     } else {
-                        fidget = pick(15, avoiding: &fidgetHistory, keep: 6)
+                        fidget = pick(25, avoiding: &fidgetHistory, keep: 6)
                     }
                     fidgetTime = 0
                     fidgetAmp = CGFloat.random(in: 0.8...1.2)
@@ -1548,6 +1602,7 @@ final class SprytCharacter {
         pose.spin = spin
         pose.prop = target.prop
         pose.twitch = target.twitch
+        body.setStorm(session.busy ? 0.9 : 0.25)
         body.apply(pose: pose, clip: clipName(), dt: dt,
                    showProp: (activity == .tool || (hobbyTime > 0 && drill == 0)) && mode == .idle, speed: speedX, time: t)
 
@@ -1567,7 +1622,12 @@ final class SprytCharacter {
     }
 
     func syncNode(origin: CGPoint) {
-        node.position = v3(pos.x - origin.x, pos.y - origin.y, zIndex)
+        node.position = v3(pos.x - origin.x, pos.y + altitude - origin.y, zIndex)
+        if isFloater {
+            // The shadow stays on the ground, fainter the higher the cloud hangs.
+            shadow.position.y = 1 - altitude
+            shadow.opacity = mode == .held ? 0 : max(0.08, 0.5 - altitude / 900)
+        }
     }
 
     private func clipName() -> String {
@@ -1769,6 +1829,8 @@ final class SprytCharacter {
                 choice = bigHistory.last == 9 ? 10 : 9
                 bigHistory.append(choice)
                 if bigHistory.count > 3 { bigHistory.removeFirst() }
+            } else if isForecaster {
+                choice = 11
             } else {
                 choice = pick(6, avoiding: &bigHistory, keep: 3)
             }
@@ -1780,6 +1842,11 @@ final class SprytCharacter {
                 hop(height: H * 0.6, withFlip: false)
                 gesture = "pump"
                 gestureTime = 2.6
+                return
+            case 11:
+                // A long, weary sigh: a few drops fall and it sinks a little, then it perks up.
+                showEmote("…")
+                idleFor = 2
                 return
             case 9:
                 // Reciting to an imaginary audience.
@@ -2300,6 +2367,83 @@ final class SprytCharacter {
                 p.elbowR = 1.7 - 1.5 * max(0, -jab)
                 p.bodyY = 2 * abs(sin(fidgetTime * 11))
                 p.lean = 0.12
+            case 16:  // skip on the spot, arms swinging
+                let s = sin(fidgetTime * 10)
+                p.bodyY = 3 + 3 * abs(s)
+                p.legL = 0.35 * max(0, s)
+                p.legR = 0.35 * max(0, -s)
+                p.armL = 0.6 * s
+                p.armR = -0.6 * s
+                p.elbowL = 1.2
+                p.elbowR = 1.2
+                p.tilt = 0.05 * s
+            case 17:  // a quick shake of the head, as if to clear it
+                p.headYaw = 0.35 * sin(fidgetTime * 22) * max(0, 1 - fidgetTime / fidgetDur)
+                p.headTilt = 0.1 * cos(fidgetTime * 22)
+                p.eyeOpen = 0.7
+            case 18:  // arms folded, nodding along to something only it can hear
+                p.armL = 0.9
+                p.armR = 0.9
+                p.elbowL = 2.5
+                p.elbowR = 2.5
+                p.armOutL = 0.1
+                p.armOutR = 0.1
+                p.headPitch = 0.12 + 0.12 * sin(fidgetTime * 6)
+                p.smile = 0.6
+            case 19:  // a glance back over one shoulder
+                let e = sin(CGFloat.pi * min(1, fidgetTime / fidgetDur))
+                p.headYaw = 0.9 * e
+                p.lookX = 0.8 * e
+                p.lean = -0.06 * e
+                p.armOutL = 0.12 + 0.3 * e
+            case 20:  // a salute, held a moment
+                p.armR = 2.4
+                p.elbowR = 0.3
+                p.armOutR = 0.25
+                p.headTilt = 0.05
+                p.smile = 0.5
+            case 21:  // a flex: arms up, a little pulse with each beat
+                let beat = 0.5 + 0.5 * sin(fidgetTime * 9)
+                p.armOutL = 0.9
+                p.armOutR = 0.9
+                p.elbowL = 2.4 + 0.2 * beat
+                p.elbowR = 2.4 + 0.2 * beat
+                p.squash = 1 + 0.03 * beat
+                p.headPitch = -0.08
+                p.smile = 0.9
+            case 22:  // up on tiptoe, wobbling for balance
+                p.bodyY = 4
+                p.kneeL = -0.15
+                p.kneeR = -0.15
+                p.armOutL = 1.0 + 0.3 * sin(fidgetTime * 7)
+                p.armOutR = 1.0 - 0.3 * sin(fidgetTime * 7)
+                p.tilt = 0.1 * sin(fidgetTime * 7)
+            case 23:  // hands on hips, looking pleased with itself
+                p.armL = 0.2
+                p.armR = 0.2
+                p.elbowL = 2.3
+                p.elbowR = 2.3
+                p.armOutL = 1.1
+                p.armOutR = 1.1
+                p.lean = 0.1
+                p.headTilt = -0.12
+                p.smile = 0.9
+            case 24:  // a lazy sway, arms loose
+                let s = sin(fidgetTime * 4)
+                p.tilt = 0.18 * s
+                p.bodyY = 1.5 * abs(s)
+                p.armOutL = 0.5 + 0.4 * s
+                p.armOutR = 0.5 - 0.4 * s
+                p.elbowL = 0.8
+                p.elbowR = 0.8
+            case 25:  // look up at the sky, tracing something with an eye
+                let e = sin(CGFloat.pi * min(1, fidgetTime / fidgetDur))
+                p.headPitch = -0.5 * e
+                p.lookY = 1 * e
+                p.lookX = 0.4 * sin(fidgetTime * 3) * e
+                p.armOutR = 0.12 + 1.2 * e
+                p.armR = -0.3 * e
+                p.elbowR = 0.6
             default:
                 break
             }

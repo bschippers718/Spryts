@@ -8,6 +8,7 @@ let chatPanelSize = CGSize(width: 384, height: 548)
 struct ChatView: View {
     @ObservedObject var session: ChatSession
     @ObservedObject var shelf: AppShelf
+    @ObservedObject private var focus = FocusKeeper.shared
     let name: String
     let tint: Color
     @ObservedObject private var connector = Connector.shared
@@ -24,9 +25,11 @@ struct ChatView: View {
     private var isWriter: Bool { role == "writer" }
     private var isCoach: Bool { role == "coach" }
     private var isGeneralist: Bool { role == "generalist" }
+    private var isForecaster: Bool { role == "forecaster" }
 
     private var emptyHint: String {
         if isCoach { return "\(name) is your coach. Ask for a workout, log a session, or click to open the training room." }
+        if isForecaster { return "\(name) reads your week like weather. Ask for today's sky, or click to open the forecast room." }
         if !isCoder && !isWriter && !isGeneralist { return "Ask \(name) anything." }
         if isCoder { return "\(name) is the programmer. Click to open the IDE, or ask a quick question about the code here." }
         if isWriter { return "\(name) is the writer. Click to open the studio, or ask for a word, a line or a fix here." }
@@ -148,6 +151,8 @@ struct ChatView: View {
                 projectStrip
             } else if isWriter {
                 writerStrip
+            } else if isForecaster {
+                ForecastStrip(session: session, model: ForecastModel.of(session.sheet.id))
             } else if isCoach {
                 CoachStrip(session: session, journal: TrainingJournal.of(session.sheet.id), tint: tint)
             } else if isGeneralist {
@@ -446,9 +451,32 @@ struct ChatView: View {
                 writerActions
             } else if isCoach {
                 coachActions
+            } else if isForecaster {
+                forecasterActions
             } else if isGeneralist {
                 generalActions
             }
+        }
+    }
+
+    private var forecasterActions: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                chip("Today's sky") {
+                    session.ask(display: "Today's sky",
+                                prompt: "Give me today's forecast from my files and anything I've given you. Write forecast.md and tell me the condition in one sentence.")
+                }
+                chip("Plan my week") {
+                    session.ask(display: "Plan my week",
+                                prompt: "Give me the outlook for the next five to seven days. Write week.md and name the heaviest day.")
+                }
+                chip("Too much on") {
+                    session.ask(display: "Too much on",
+                                prompt: "I've got too much on. Forecast this as a storm if it is one, name the one or two things to move or drop, and suggest what to say to whoever is waiting.")
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.top, 6)
         }
     }
 
@@ -531,6 +559,32 @@ struct ChatView: View {
     private var generalActions: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
+                if focus.sweepActive {
+                    chip("Bring it all back") { runFocus("Bring it all back") { await FocusKeeper.shared.back() } }
+                } else {
+                    chip("I'm overwhelmed") { runFocus("I'm overwhelmed") { await FocusKeeper.shared.sweep() } }
+                }
+                chip("Where was I?") {
+                    runFocus("Where was I?") {
+                        FocusKeeper.awaySummary() ?? "I haven't seen you step away yet. When you do, I'll remember what was open."
+                    }
+                }
+                if focus.hasAway {
+                    chip("Put it back") { runFocus("Put it back") { await FocusKeeper.shared.restoreAway() } }
+                }
+                chip("Save this setup") { runFocus("Save this setup") { await FocusKeeper.shared.save(as: "") } }
+                if !focus.saved.isEmpty {
+                    Menu {
+                        ForEach(focus.saved, id: \.self) { name in
+                            Button(name) { runFocus("Restore \(name)") { await FocusKeeper.shared.restore(named: name) } }
+                        }
+                    } label: {
+                        Text("Setups").font(.system(size: 11))
+                    }
+                    .menuStyle(.borderlessButton)
+                    .fixedSize()
+                    .disabled(session.busy)
+                }
                 chip("What's on my screen?") {
                     session.draft = "Take a screenshot and tell me what's on my screen."
                     session.send()
@@ -552,6 +606,18 @@ struct ChatView: View {
             .padding(.horizontal, 12)
             .padding(.top, 8)
         }
+        .onAppear { focus.reloadState() }
+        .onChange(of: session.busy) { focus.reloadState() }
+    }
+
+    /// Runs one of Pip's focus tools straight away, no model call, and leaves the result in the chat.
+    private func runFocus(_ display: String, _ work: @escaping @MainActor () async -> String) {
+        session.messages.append(ChatMessage(role: "user", text: display))
+        Task { @MainActor in
+            let line = await work()
+            session.messages.append(ChatMessage(role: "assistant", text: line))
+            session.save()
+        }
     }
 
     private func chip(_ title: String, action: @escaping () -> Void) -> some View {
@@ -571,6 +637,7 @@ struct ChatView: View {
         if isCoder { return "Ask \(name) about the code…" }
         if isWriter { return "Ask \(name) about words…" }
         if isCoach { return "Tell \(name) how it went, or ask for a session…" }
+        if isForecaster { return "Ask \(name) what's coming…" }
         if isGeneralist { return "Ask \(name) or give a command…" }
         return "Ask \(name)…"
     }
@@ -749,6 +816,7 @@ struct CoachStrip: View {
     @ObservedObject var session: ChatSession
     @ObservedObject var journal: TrainingJournal
     let tint: Color
+    @ObservedObject private var strava = Strava.shared
 
     var body: some View {
         HStack(spacing: 8) {
@@ -757,6 +825,7 @@ struct CoachStrip: View {
                 .font(.system(size: 12, weight: .bold))
                 .lineLimit(1)
             Spacer()
+            stravaButton
             Button(action: { session.onOpenWorkspace?() }) {
                 Text("Training room")
                     .font(.system(size: 11, weight: .heavy))
@@ -772,5 +841,33 @@ struct CoachStrip: View {
         .onAppear { journal.reload() }
         .onChange(of: session.busy) { journal.reload() }
         .onChange(of: session.showTick) { journal.reload() }
+    }
+
+    /// Strava's own orange, so it reads as Strava at a glance. Right-click to disconnect.
+    private var stravaButton: some View {
+        let orange = Color(red: 0.99, green: 0.30, blue: 0.01)
+        return Button(action: {
+            if !strava.connected && !strava.connecting { strava.connect(for: session.sheet.id) }
+        }) {
+            HStack(spacing: 4) {
+                Image(systemName: strava.connected ? "checkmark.circle.fill" : "link")
+                Text(strava.connected ? "Strava" : (strava.connecting ? "Connecting…" : "Connect Strava"))
+            }
+            .font(.system(size: 11, weight: .heavy))
+            .foregroundColor(strava.connected ? orange : .white)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 5)
+            .background(strava.connected ? orange.opacity(0.15) : orange.opacity(0.85))
+            .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .help(strava.status.isEmpty
+              ? (strava.connected ? "Connected as \(strava.athlete). Rally sees your last 60 days." : "Let Rally see your Strava activities")
+              : strava.status)
+        .contextMenu {
+            if strava.connected {
+                Button("Disconnect Strava") { strava.disconnect(for: session.sheet.id) }
+            }
+        }
     }
 }

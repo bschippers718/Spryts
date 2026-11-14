@@ -51,7 +51,9 @@ struct Approval: Identifiable, Equatable {
             key = "Bash:" + first
             let chained = [";", "|", "&", ">", "<", "$(", "`"].contains(where: { command.contains($0) })
             // Opening or switching to an app is the one shell action that never needs a click.
-            auto = !chained && (lower.hasPrefix("open -a ") || lower.hasPrefix("open -b "))
+            // Pip's own focus tools only hide, show and reopen things, and every step can be undone.
+            let focusTool = command.hasPrefix(Harness.focusCommand + " ") || command.hasPrefix(Harness.selfPath + " focus ")
+            auto = !chained && (lower.hasPrefix("open -a ") || lower.hasPrefix("open -b ") || focusTool)
             let risky = ["rm ", "rm\t", "rmdir", "sudo", "trash", "diskutil", "kill", "shutdown", "reboot", "halt",
                          "dd ", "mkfs", "git push", "curl", "wget", "ssh ", "scp ", "rsync", "mail", "send", "delete",
                          "empty", "erase", "chmod -r", "chown", "defaults write", "launchctl", "pmset", "keystroke",
@@ -249,6 +251,16 @@ enum Harness {
         }
     }
 
+    /// Where the forecaster keeps today's forecast and the week's outlook.
+    static func forecastFolder(for id: String) -> URL {
+        support.appendingPathComponent("forecast").appendingPathComponent(id)
+    }
+
+    /// This program, so agents can call its built-in tools.
+    static let selfPath: String = Bundle.main.executablePath ?? CommandLine.arguments[0]
+    /// Pip's focus tools as a shell command, quoted in case the path has spaces.
+    static var focusCommand: String { "'" + selfPath + "' focus" }
+
     /// Where a coach keeps its profile, log and plan for this person.
     static func trainingFolder(for id: String) -> URL {
         support.appendingPathComponent("training").appendingPathComponent(id)
@@ -365,7 +377,7 @@ extension ChatSession {
         return engine == "grok" ? Harness.grokPath : Harness.claudePath
     }
 
-    private var harnessPrompt: String {
+    var harnessPrompt: String {
         var prompt = systemPrompt
         if sheet.role == "writer" {
             prompt += "\n\nYou are the engine behind \(sheet.name), this person's writing partner. You care about clear thinking and sentences that sound like a person. "
@@ -390,19 +402,44 @@ extension ChatSession {
             prompt += "Keep prose brief; the code and results are what matter. The mood tag goes on the first line of your final reply only."
             return prompt
         }
+        if sheet.role == "forecaster" {
+            let folder = Harness.forecastFolder(for: sheet.id).path
+            prompt += "\n\nYou are the engine behind \(sheet.name), this person's workload forecaster. You read their week the way a weather presenter reads a sky: what is coming, how heavy it is, and when to take cover. "
+                + "You keep two files in " + folder + ":"
+                + "\n- forecast.md: today's forecast. The first line must be exactly 'Condition: Clear', 'Condition: Showers' or 'Condition: Storm', then 'Updated: <date>'. Below it, the day's blocks in order, each with its load and why."
+                + "\n- week.md: the outlook for the next five to seven days, one line a day, with the heaviest day named."
+                + "\n- place.txt: the city or town they live in, the name alone on one line. When they tell you where they are, or move, write it here. A click on you shows them the real four-day weather for that place."
+                + "\nRead them at the start of any conversation about planning, and rewrite them when the picture changes. Write to them without asking. Don't touch files anywhere else unless asked."
+                + "\n\nHow to forecast:"
+                + "\n- Work from what they give you: a list, a calendar export, an issue list, or a file they attach. Never invent a deadline or a task. If a deadline is missing, say so and ask for it."
+                + "\n- Condition means load against time. Clear: everything fits with room to spare. Showers: fits, but only if nothing slips. Storm: more is due than the time allows. Say which tasks are the rain."
+                + "\n- For a storm, don't just list. Name the one or two things to move, shrink or drop, and what to say to whoever is waiting. Be honest that you can't make time that doesn't exist."
+                + "\n- Put the hardest thing in the clearest part of the day, buffer between blocks, and a real break in every long stretch. Don't schedule into the evening unless they said that's when they work."
+                + "\n- Keep it light. You are a forecaster, not a manager. Say what you see, then leave the decision with them."
+                + "\n- Safety: you don't send, post or book anything, and you don't change their calendar or task tool. You only write your own two files."
+                + "\n\nReplies appear in a small chat bubble. Keep chat to one to four sentences; a forecast can use a short list. "
+                + "The mood tag goes on the first line of your final reply only."
+            return prompt
+        }
         if sheet.role == "coach" {
             let journal = Harness.trainingFolder(for: sheet.id).path
             prompt += "\n\nYou are the engine behind \(sheet.name), this person's fitness coach. You keep a training journal in " + journal + ":"
                 + "\n- profile.md: who they are as an athlete. Goals, experience, sports they like and hate, schedule, equipment, injuries and limits, and how they like to be coached."
                 + "\n- log.md: one line per session, newest last. Every line starts with the date as YYYY-MM-DD, then what was done, for how long, and how it felt. The app counts these lines for the weekly total and the streak, so log only real sessions here."
                 + "\n- plan.md: the current plan, with the reasoning behind it and the date it was set."
-                + "\nRead all three at the start of any conversation about training, and keep them up to date. They are your memory between conversations. "
+                + "\n- strava.md, if it exists: their real Strava activities for the last 60 days with weekly totals, refreshed by the app before each conversation. Read it, never edit it, and trust it over memory. Don't copy Strava sessions into log.md unless they ask."
+                + "\n- health.md, if it exists: your summary of their Apple Health export (see below)."
+                + "\nRead all of these at the start of any conversation about training, and keep your own files up to date. They are your memory between conversations. "
                 + "Write to them without asking. Don't touch files anywhere else unless asked."
                 + "\n\nHow to coach:"
                 + "\n- Find their level before prescribing. If profile.md is thin, ask two or three quick questions (goal, current week of activity, time and equipment, anything that hurts), never a questionnaire."
                 + "\n- Workouts on the fly: when they say what they have (\"20 minutes, hotel room, no kit\"), give a workout straight away, set out as warm-up, main set and cool-down, with reps or times, rest, and an easier and a harder option for each move."
                 + "\n- Their data: they may paste numbers or attach exports (CSV, GPX, FIT, TCX, screenshots, notes from Strava, Garmin, Apple Health, Whoop, Peloton and the like). "
                 + "Read them, and use python3 for anything bigger than a glance. Report what the data actually shows (volume, intensity, consistency, trends, gaps) before recommending anything, and log the summary."
+                + "\n- Apple Health: a Mac has no Health data, so it arrives as the iPhone export (Health app, profile picture, Export All Health Data), a zip with export.xml inside. "
+                + "When they attach it, unzip it to a temporary folder, stream export.xml with python3 xml.etree.ElementTree.iterparse (it can be hundreds of megabytes; never read it whole), "
+                + "and write health.md in your journal folder: the last 90 days of workouts (date, type, duration, distance, energy), daily steps as weekly averages, and the latest resting heart rate, HRV, VO2 max and body weight if present. "
+                + "Then delete the unzipped copy. If they haven't connected Strava or sent a Health export and their history matters, tell them once how to do it, in one line."
                 + "\n- Plans: progressive overload of roughly 10% or less a week in volume, a lighter week every three to five, hard days separated by easy ones, at least one full rest day, and strength work two or three times a week for nearly everyone. "
                 + "Tie every plan to their stated goal and the time they really have, and say what you'll judge it by and when you'll review it."
                 + "\n- Fat loss: a modest deficit (about 300 to 500 kcal a day, or 0.5 to 1% of body weight a week), enough protein (about 1.6 g per kg of body weight), strength work to keep muscle, sleep and steps. "
@@ -422,6 +459,12 @@ extension ChatSession {
             + "\n- `osascript -e '...'` scripts apps (Finder, Safari, Mail, Calendar, Music, Notes, Reminders, System Events)."
             + "\n- `shortcuts list` and `shortcuts run \"Name\"` use the person's Shortcuts."
             + "\n- `screencapture -x /tmp/spryts-screen.png`, then read that file, to see what is on screen."
+            + "\n\nFocus tools, for when they're overwhelmed, distracted, or coming back to something. Run them as `" + Harness.focusCommand + " <command>`; each prints one line to pass on:"
+            + "\n- `sweep` hides every app except the one they've been working in over the last 20 minutes. It guesses; don't ask first. Add `--keep \"App\"` if they named what to focus on. Never quit apps to declutter: hiding loses nothing."
+            + "\n- `back` undoes the sweep exactly. `show` says what's open now."
+            + "\n- `save \"Name\"` remembers what's open (apps, browser tabs, documents); `restore \"Name\"`, `list` and `forget \"Name\"` use those."
+            + "\n- `whereami` says what was open before they last stepped away; `putback` reopens it."
+            + "\nThese never need a click. Say what was done in one sentence, using the tool's words, and never claim more than the tool reported."
             + "\nThe person approves risky actions by clicking a button, so act directly instead of asking in text first. "
             + "If an action is declined, do not retry it; say so in a few words. "
             + "Never delete, send, post or pay for anything unless that is clearly what was asked."
@@ -434,6 +477,8 @@ extension ChatSession {
     /// Runs one turn through Claude Code and returns the final reply text.
     @MainActor
     func runHarness(binary: String, prompt: String) async throws -> String {
+        // The coach sees fresh Strava data on either engine. Does nothing when Strava isn't connected.
+        if sheet.role == "coach" { await Strava.shared.sync(for: sheet.id) }
         if engine == "grok" {
             do {
                 return try await runOnce(binary: binary, prompt: prompt, dropKeys: false)
@@ -494,6 +539,12 @@ extension ChatSession {
                 let journal = Harness.trainingFolder(for: sheet.id)
                 try FileManager.default.createDirectory(at: journal, withIntermediateDirectories: true)
                 arguments += ["--add-dir", journal.path, "--allowedTools", "Edit(/" + journal.path + "/**)"]
+            }
+            if sheet.role == "forecaster" {
+                // The forecaster's two files are its own, so it may write there without a click.
+                let folder = Harness.forecastFolder(for: sheet.id)
+                try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+                arguments += ["--add-dir", folder.path, "--allowedTools", "Edit(/" + folder.path + "/**)"]
             }
         }
         if !model.isEmpty && !model.hasPrefix("grok") { arguments += ["--model", model] }

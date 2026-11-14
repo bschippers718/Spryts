@@ -43,6 +43,7 @@ final class AppShelf: ObservableObject {
     private var frontSince = Date()
     private var order: [String] = []          // bundle ids, most recently used first
     private var quitApps: [AppItem] = []
+    private var spans: [FocusSpan] = []         // time in front, for the last half hour
     private var observers: [NSObjectProtocol] = []
 
     init() {
@@ -63,6 +64,9 @@ final class AppShelf: ObservableObject {
             order = [id]
             frontID = id
             activity[id] = AppActivity(name: front.localizedName ?? id, lastActive: Date(), seconds: 0, notes: [])
+            if front.activationPolicy == .regular {
+                FocusKeeper.writeDwell(spans: [], current: FocusSpan(id: id, name: front.localizedName ?? id, start: Date(), end: Date()))
+            }
         }
         refresh()
     }
@@ -80,6 +84,13 @@ final class AppShelf: ObservableObject {
                 if name == NSWorkspace.didActivateApplicationNotification {
                     order.removeAll(where: { $0 == id })
                     order.insert(id, at: 0)
+                    // Keep a record of time in front for Pip's focus guess, before the clock is reset.
+                    if let previous = frontID, previous != id {
+                        spans.append(FocusSpan(id: previous, name: activity[previous]?.name ?? previous, start: frontSince, end: Date()))
+                        spans.removeAll(where: { $0.end < Date().addingTimeInterval(-1800) })
+                    }
+                    let current = FocusSpan(id: id, name: app.localizedName ?? id, start: Date(), end: Date())
+                    FocusKeeper.writeDwell(spans: spans, current: current)
                     // Close out the time spent in the app that was in front, and start the clock on this one.
                     settle()
                     frontID = id

@@ -725,6 +725,7 @@ final class OrangeSmash {
         if role == "coder" { return ["That one slipped past the tests.", "Dropped frame!", "Off by one."] }
         if role == "writer" { return ["A tragic ending for that one.", "And so it fell.", "Plot twist: gravity."] }
         if role == "coach" { return ["Shake it off. Next rep!", "Reset. Eyes up.", "That's one. Still in it."] }
+        if role == "forecaster" { return ["Well, that one's dropped.", "Sorry, a little drizzle there.", "Gusty. It happens."] }
         return ["Ooh, so close!", "That one got away.", "Eyes on the oranges!"]
     }
 
@@ -732,6 +733,7 @@ final class OrangeSmash {
         if role == "coder" { return ["That was a bug, not a feature.", "You shipped the bomb."] }
         if role == "writer" { return ["Never trust the dark ones.", "A cautionary tale."] }
         if role == "coach" { return ["Discipline! Leave the bombs.", "Bad rep. Breathe, go again."] }
+        if role == "forecaster" { return ["Storm warning: bombs ahead.", "Lightning. Leave it alone."] }
         return ["Not the bombs!", "Boom. Leave those ones."]
     }
 
@@ -739,6 +741,7 @@ final class OrangeSmash {
         if role == "coder" { return ["Clean run!", "All green!", "You're compiling nicely."] }
         if role == "writer" { return ["Poetry in motion.", "What a chapter!", "Bravo!"] }
         if role == "coach" { return ["That's form!", "Strong set! Keep the pace.", "Now you're warmed up."] }
+        if role == "forecaster" { return ["Clearing up nicely!", "Sunshine, all the way!", "Not a cloud in sight."] }
         return ["You're on fire!", "Look at you go!", "Unstoppable!"]
     }
 
@@ -746,6 +749,7 @@ final class OrangeSmash {
         if role == "coder" { return ["Flawless. Shipping the next wave.", "No misses. Scaling up."] }
         if role == "writer" { return ["A perfect stanza. Next verse!", "Not a word out of place."] }
         if role == "coach" { return ["Clean set. Adding load.", "Perfect round! Next one's harder."] }
+        if role == "forecaster" { return ["A front of perfect weather!", "Settled, sunny, and staying that way."] }
         return ["Perfect wave! Here come more.", "Too easy? Try these."]
     }
 

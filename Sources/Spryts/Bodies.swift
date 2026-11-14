@@ -68,6 +68,8 @@ protocol CharacterBody: AnyObject {
     var height: CGFloat { get }
     var legLength: CGFloat { get }
     func apply(pose: Pose, clip: String, dt: CGFloat, showProp: Bool, speed: CGFloat, time: CGFloat)
+    /// How heavy the weather is, 0...1. Only the cloud uses it.
+    func setStorm(_ level: CGFloat)
 }
 
 private func material(_ color: NSColor, glow: Bool = false) -> SCNMaterial {
