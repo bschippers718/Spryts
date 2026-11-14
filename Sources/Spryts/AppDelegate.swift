@@ -295,6 +295,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             menu.addItem(item)
         }
         menu.addItem(NSMenuItem.separator())
+        let connectItem = NSMenuItem(title: "Connect Claude in browser…", action: #selector(connectClaude), keyEquivalent: "")
+        connectItem.target = self
+        menu.addItem(connectItem)
         let playItem = NSMenuItem(title: "Play Orange Smash", action: #selector(playFromMenu), keyEquivalent: "")
         playItem.target = self
         menu.addItem(playItem)
@@ -339,6 +342,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     // MARK: Games
+
+    @objc private func connectClaude() {
+        Connector.shared.connect()
+    }
 
     @objc private func playFromMenu() {
         if let first = characters.first { startGame(first.sheet.id) }

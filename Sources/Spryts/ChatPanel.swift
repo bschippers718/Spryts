@@ -10,6 +10,7 @@ struct ChatView: View {
     @ObservedObject var shelf: AppShelf
     let name: String
     let tint: Color
+    @ObservedObject private var connector = Connector.shared
     let role: String
     @FocusState private var typing: Bool
     @State private var branch = ""
@@ -424,6 +425,9 @@ struct ChatView: View {
 
     private var quickActions: some View {
         Group {
+            if session.sheet.harness == "claude-code" && connector.needsConnecting {
+                ConnectCard(name: name, tint: tint)
+            }
             if session.busy && session.onPlay != nil {
                 playRow
             }

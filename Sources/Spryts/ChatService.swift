@@ -164,7 +164,7 @@ final class ChatSession: ObservableObject {
     var providerLabel: String {
         if sheet.harness == "claude-code" {
             if Harness.claudePath != nil { return "Claude Code" }
-            return apiKey == nil ? "Claude Code not found (demo)" : "Claude Code not found, using Claude"
+            return apiKey == nil ? "Not connected" : "Claude Code not found, using Claude"
         }
         let name = sheet.provider == "grok" ? "Grok" : "Claude"
         return apiKey == nil ? name + " (demo)" : name
@@ -296,6 +296,7 @@ final class ChatSession: ObservableObject {
             do {
                 if !unprompted, let binary = self.harnessBinary() {
                     raw = try await self.runHarness(binary: binary, prompt: history.last?.payload ?? history.last?.text ?? "")
+                    Connector.shared.noteWorking()
                 } else if let request = self.makeRequest(history: history) {
                     let (bytes, response) = try await URLSession.shared.bytes(for: request)
                     let status = (response as? HTTPURLResponse)?.statusCode ?? 0
@@ -333,7 +334,9 @@ final class ChatSession: ObservableObject {
                     self.onEvent?(.tool("search"))
                     try await Task.sleep(nanoseconds: 1_800_000_000)
                     let keyName = self.sheet.provider == "grok" ? "XAI_API_KEY" : "ANTHROPIC_API_KEY"
-                    let reply = "[mood=playful gesture=wave]\nHi, I'm \(self.sheet.name). I'm in demo mode because there is no \(keyName) yet. Add it to the .env file in the Spryts folder, run me again, and I'll answer for real."
+                    let reply = self.sheet.harness == "claude-code"
+                        ? "[mood=playful gesture=wave]\nHi, I'm \(self.sheet.name). I'm not connected to Claude yet. Press Connect below, sign in in your browser, and I'll answer for real."
+                        : "[mood=playful gesture=wave]\nHi, I'm \(self.sheet.name). I'm in demo mode because there is no \(keyName) yet. Add it to the .env file in the Spryts folder, run me again, and I'll answer for real."
                     for word in reply.split(separator: " ", omittingEmptySubsequences: false) {
                         raw += (raw.isEmpty ? "" : " ") + String(word)
                         announced = self.show(raw, announced: announced)

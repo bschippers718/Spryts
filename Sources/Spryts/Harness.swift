@@ -82,7 +82,9 @@ enum Harness {
     static var hookScript: URL { support.appendingPathComponent("approve.sh") }
 
     /// Where the `claude` command lives on this Mac, or nil if it isn't installed.
-    static let claudePath: String? = {
+    static var claudePath: String? = Harness.findClaude()
+
+    static func findClaude() -> String? {
         let home = NSHomeDirectory()
         // The current installer's locations come first, so an old copy elsewhere on the PATH doesn't win.
         var folders = [home + "/.local/bin", home + "/.claude/local"]
@@ -111,7 +113,7 @@ enum Harness {
             return nil
         }
         return nil
-    }()
+    }
 
     /// What sort of work a tool call is, so the character can act it out.
     static func kind(tool: String, input: [String: Any]) -> String {
