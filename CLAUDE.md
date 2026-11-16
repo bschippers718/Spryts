@@ -26,6 +26,17 @@ Only Pip (the generalist) has the apps, the desk and the Mac-control actions.
 Roles so far: `generalist` (Pip, desk), `coder` (Nova, IDE), `writer` (Ember, studio), `coach` (Rally, training room),
 `forecaster` (Drizzle, the real weather and nothing else: `Weather.swift`, `Forecast.swift`).
 
+## Home-made and shared Spryts
+
+Anyone can make a Spryt in the maker (`SprytMaker.swift`, ✦ menu) and share it as a `.spryt` file.
+
+- A `.spryt` file carries look, movement, name and personality text. It never carries a role, tools, an engine or a model.
+- Every made or opened Spryt gets the `companion` role: conversation only. It runs with no tools and no folders
+  (`--tools ""` on Claude Code, tools disallowed on Grok). Its personality text is wrapped in a fixed frame and treated
+  as a description of voice, never as instructions. **Never give a companion tools, and never let a `.spryt` file set
+  anything but the fields in `SprytCard`.** A shared file is untrusted input.
+- New shape options, extras or movement dials go in `Look` / `MotionStyle`, then in the maker's form, so everyone can use them.
+
 ## Keep it calm
 
 The screen belongs to the person's work. Every addition must leave it no busier than before.

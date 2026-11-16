@@ -53,6 +53,11 @@ struct CharacterSheet: Codable {
     var order: Int?          // lower numbers come first; the first character answers the hotkey
     var role: String?        // "coder" gets coding instructions, project permissions and the workspace window
     var signature: String?   // a move only this creature has: smoke, stalks, ears, spark
+    var custom: Bool?        // made in the Spryt maker, or opened from a .spryt file
+    var quirks: [String]?    // habits switched off: noflips, nonaps
+    var makerPersona: String? // the personality as its maker typed it, kept so it can be edited again
+
+    func has(_ quirk: String) -> Bool { (quirks ?? []).contains(quirk) }
 }
 
 enum Config {

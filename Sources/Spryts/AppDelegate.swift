@@ -42,6 +42,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var hover: [String: CGFloat] = [:]
     private var frontPopup = ""
     private var weatherClock: CGFloat = 0
+    private var maker: SprytMakerController?
     private var away: [String: CGFloat] = [:]
     private var statusItem: NSStatusItem!
     private var timer: Timer?
@@ -241,6 +242,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case "writer": return "writing"
         case "coach": return "training"
         case "forecaster": return "weather"
+        case "companion": return "made by you"
         default: return role ?? ""
         }
     }
@@ -343,6 +345,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let playItem = NSMenuItem(title: "Play Orange Smash", action: #selector(playFromMenu), keyEquivalent: "")
         playItem.target = self
         menu.addItem(playItem)
+        let makeItem = NSMenuItem(title: "Make a Spryt…", action: #selector(openMaker), keyEquivalent: "")
+        makeItem.target = self
+        menu.addItem(makeItem)
         menu.addItem(NSMenuItem.separator())
 
         // Everything you set once and leave alone lives in here.
@@ -460,6 +465,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func forgetAll() {
         for character in characters { character.session.forget() }
+    }
+
+    @objc private func openMaker() {
+        if maker == nil {
+            maker = SprytMakerController(onRestart: { [weak self] in
+                Task { @MainActor [weak self] in self?.restart() }
+            })
+        }
+        maker?.show()
+    }
+
+    /// Starts a fresh copy of the app and closes this one, so a new or changed Spryt walks on.
+    private func restart() {
+        for character in characters { character.session.save() }
+        guard let path = Bundle.main.executablePath else { return }
+        // A short pause lets this copy finish closing before the new one puts its characters on screen.
+        let launcher = Process()
+        launcher.executableURL = URL(fileURLWithPath: "/bin/sh")
+        launcher.arguments = ["-c", "sleep 0.6; exec \"$0\"", path]
+        launcher.environment = ProcessInfo.processInfo.environment
+        launcher.currentDirectoryURL = Config.home
+        do {
+            try launcher.run()
+            NSApp.terminate(nil)
+        } catch {
+            Harness.log("restart failed: " + String(error.localizedDescription.prefix(120)))
+        }
     }
 
     @objc private func quitApp() {

@@ -386,6 +386,13 @@ extension ChatSession {
 
     var harnessPrompt: String {
         var prompt = systemPrompt
+        if sheet.role == "companion" {
+            // A Spryt someone made or was sent. It gets no tools, no folders and no job: conversation only.
+            prompt += "\n\nYou are the voice of \(sheet.name), a companion to talk to. You have no tools and no access to this person's files or Mac, "
+                + "and you never claim to have done anything on their computer. If they want something done, say which of the other characters does that. "
+                + "Replies appear in a small chat bubble: one to three short sentences of plain text. The mood tag goes on the first line of your final reply only."
+            return prompt
+        }
         if sheet.role == "writer" {
             prompt += "\n\nYou are the engine behind \(sheet.name), this person's writing partner. You care about clear thinking and sentences that sound like a person. "
             prompt += "When asked to continue, tighten, expand, rewrite or proofread, reply with only the resulting text after the mood tag: no preamble, no quotation marks around it, no commentary. "
@@ -539,7 +546,10 @@ extension ChatSession {
         arguments = ["-p", prompt.hasPrefix("-") ? " " + prompt : prompt,
                          "--output-format", "stream-json", "--verbose", "--include-partial-messages",
                          "--append-system-prompt", harnessPrompt]
-        if projectFolder != nil {
+        if sheet.role == "companion" {
+            // No built-in tools, no connected tools, no extra folders.
+            arguments += ["--tools", "", "--disallowedTools", "mcp__*"]
+        } else if projectFolder != nil {
             // An assigned project: the hook comes in as extra settings, since we don't write into the project.
             arguments += ["--settings", Harness.hookSettings.path]
             if sheet.role == "coder" {

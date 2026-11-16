@@ -659,7 +659,7 @@ return CGRect(x: pos.x - H * 0.45, y: pos.y + altitude - 4, width: H * 0.9, heig
         jumpFrom = pos
         jumpTo = target
         jumpPlatform = platform
-        flip = withFlip && jumpDur <= 0.85
+        flip = withFlip && jumpDur <= 0.85 && !sheet.has("noflips")
         if flip {
             // Angular momentum is fixed at take-off. Pick the amount that gives exactly one turn
             // over the air time, given how the tuck speeds the spin up and the opening slows it.
@@ -1729,7 +1729,7 @@ return CGRect(x: pos.x - H * 0.45, y: pos.y + altitude - 4, width: H * 0.9, heig
 
         // Left alone for a while: get drowsy and sit, then fall asleep until someone comes by.
         let sleepAfter = max(20, sheet.sleepAfter ?? 180)
-        if activity == .none && (userIdle > (night ? 200 : 420) || sinceInteraction > sleepAfter) {
+        if activity == .none && !sheet.has("nonaps") && (userIdle > (night ? 200 : 420) || sinceInteraction > sleepAfter) {
             napTimer = 0.5
             setMode(.napping)
             return
