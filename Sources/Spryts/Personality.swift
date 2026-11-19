@@ -3,17 +3,18 @@ import AppKit
 /// Small differences in expression, shared by movement and neighbourly chatter.
 /// These shape existing moments; they never schedule extra activity or grant a role capabilities.
 struct SprytPersonality {
-    let greetingGesture: String
+    private(set) var greetingGesture: String
     let microGestures: [Int]
     /// Angular frequency for the resting breath, in radians per second.
     let breathingRate: CGFloat
     /// Amplitude multiplier for conversational body language.
-    let talkingEnergy: CGFloat
+    private(set) var talkingEnergy: CGFloat
 
-    private let openers: [String]
-    private let answers: [String]
+    private var openers: [String]
+    private var answers: [String]
 
-    init(role: String?) {
+    /// `voice` is a made Spryt's own greeting and lines. It changes how it says hello, never what it can do.
+    init(role: String?, voice: SprytVoice? = nil) {
         // Keep at least seven gestures per role so avoiding the last five still leaves variety.
         switch role ?? "generalist" {
         case "generalist":
@@ -119,6 +120,12 @@ struct SprytPersonality {
                 "A quiet moment together sounds nice.",
                 "Thanks for stopping by."
             ]
+        }
+        if let voice {
+            if let gesture = voice.greeting { greetingGesture = gesture }
+            if let energy = voice.energy { talkingEnergy = energy }
+            if let lines = voice.hellos, !lines.isEmpty { openers = lines }
+            if let lines = voice.replies, !lines.isEmpty { answers = lines }
         }
     }
 

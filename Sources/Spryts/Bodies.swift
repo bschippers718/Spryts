@@ -220,9 +220,20 @@ final class ProceduralBody: CharacterBody {
 
         // Torso
         hips.addChildNode(torso)
-        let trunk = shape(SCNCapsule(capRadius: torsoW * 0.5, height: torsoH + torsoW * 0.55), bodyColor)
+        let trunk: SCNNode
+        switch look.build ?? "bean" {
+        case "round":
+            trunk = shape(SCNSphere(radius: torsoW * 0.62), bodyColor)
+            trunk.scale = v3(1, (torsoH + torsoW * 0.55) / (torsoW * 1.24), 0.9)
+        case "block":
+            trunk = shape(SCNBox(width: torsoW * 1.02, height: torsoH + torsoW * 0.5, length: torsoW * 0.86,
+                                 chamferRadius: torsoW * 0.2), bodyColor)
+            trunk.scale = v3(1, 1, 1)
+        default:
+            trunk = shape(SCNCapsule(capRadius: torsoW * 0.5, height: torsoH + torsoW * 0.55), bodyColor)
+            trunk.scale = v3(1, 1, 0.82)
+        }
         trunk.position = v3(0, torsoH * 0.5, 0)
-        trunk.scale = v3(1, 1, 0.82)
         torso.addChildNode(trunk)
         if look.belly != false {
             let belly = shape(SCNSphere(radius: torsoW * 0.3), accent)
@@ -254,6 +265,8 @@ final class ProceduralBody: CharacterBody {
                 skull.scale = v3(1.28, 0.88, 1)
             } else if headShape == "tall" {
                 skull.scale = v3(0.92, 1.18, 0.96)
+            } else if headShape == "flat" {
+                skull.scale = v3(1.22, 0.74, 1.04)
             } else {
                 skull.scale = v3(1.06, 0.96, 1)
             }
@@ -263,9 +276,10 @@ final class ProceduralBody: CharacterBody {
 
         // Eyes: a pair, or one big one
         let oneEye = (look.eyes ?? "two") == "one"
-        let eyeSides: [CGFloat] = oneEye ? [0] : [-1, 1]
-        let big = (oneEye ? 1.9 : 1) * (look.eyeSize ?? 1)
-        let spread: CGFloat = headShape == "wide" ? 0.5 : 0.38
+        let threeEyes = (look.eyes ?? "two") == "three"
+        let eyeSides: [CGFloat] = oneEye ? [0] : (threeEyes ? [-1, 0, 1] : [-1, 1])
+        let big = (oneEye ? 1.9 : (threeEyes ? 0.82 : 1)) * (look.eyeSize ?? 1)
+        let spread: CGFloat = (headShape == "wide" || headShape == "flat" || threeEyes) ? 0.5 : 0.38
         pupilZ = headR * 0.09 * big
         pupilTravel = big
         browY = headR * (1.0 + 0.32 * big)

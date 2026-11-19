@@ -11,8 +11,8 @@ struct Look: Codable {
     var trim: String?        // colour for the scarf, beak, wings and other details
 
     // Shape. All optional; leave out for Pip's proportions.
-    var head: String?        // round, wide, tall, box
-    var eyes: String?        // two, one
+    var head: String?        // round, wide, tall, flat, box
+    var eyes: String?        // two, one, three
     var eyeSize: CGFloat?
     var snout: String?       // none, nose, muzzle, beak
     var legs: CGFloat?       // length, 1 = normal
@@ -21,6 +21,7 @@ struct Look: Codable {
     var limbs: CGFloat?      // thickness
     var feet: CGFloat?
     var belly: Bool?
+    var build: String?       // the trunk: bean (the default), round, block
 }
 
 /// The handful of numbers that give each character its own way of moving.
@@ -34,6 +35,45 @@ struct MotionStyle: Codable {
     var fidget: CGFloat     // 0...1
     var jumpiness: CGFloat  // 0...1
     var sway: CGFloat       // side-to-side swagger, radians
+
+    // A made Spryt's own way of moving. All optional; leave out for the standard behaviour. See Moves.swift.
+    var walk: String?       // how an ordinary walk looks: natural, strut, march, waddle, bounce, glide, swing, shuffle
+    var travel: String?     // how it likes to get around: mix, walk, skip, run, sneak
+    var spring: CGFloat?    // jump height, 1 = normal
+    var showOff: CGFloat?   // 0...1, how often it does one of its moves in a spare moment
+    var moves: [String]?    // the moves it knows; leave out for the standard set
+}
+
+/// How a made Spryt sounds, and what it says to the others. Short lines for speech bubbles; never instructions.
+struct SprytVoice: Codable, Equatable {
+    var pitch: CGFloat?     // reading aloud: 1 = an ordinary voice
+    var pace: CGFloat?
+    var energy: CGFloat?    // how much the body joins in while talking
+    var greeting: String?   // wave, nod, bow, pump, shrug
+    var hellos: [String]?   // said to another Spryt; {name} becomes theirs
+    var replies: [String]?  // said back
+
+    static let greetings = ["wave", "nod", "bow", "pump", "shrug"]
+
+    /// A file can be hand-edited, so everything is cut to size and anything unknown is dropped.
+    var cleaned: SprytVoice {
+        func lines(_ value: [String]?) -> [String]? {
+            let kept = (value ?? []).prefix(6).compactMap { line -> String? in
+                let flat = line.components(separatedBy: .controlCharacters).joined(separator: " ")
+                    .components(separatedBy: .newlines).joined(separator: " ")
+                    .trimmingCharacters(in: .whitespaces)
+                return flat.isEmpty ? nil : String(flat.prefix(70))
+            }
+            return kept.isEmpty ? nil : Array(kept)
+        }
+        func bounded(_ value: CGFloat?, _ range: ClosedRange<CGFloat>) -> CGFloat? {
+            guard let value, value.isFinite else { return nil }
+            return min(range.upperBound, max(range.lowerBound, value))
+        }
+        return SprytVoice(pitch: bounded(pitch, 0.7...1.5), pace: bounded(pace, 0.8...1.3), energy: bounded(energy, 0.4...1.2),
+                          greeting: SprytVoice.greetings.contains(greeting ?? "") ? greeting : nil,
+                          hellos: lines(hellos), replies: lines(replies))
+    }
 }
 
 /// One file per character: who it is in text and who it is in motion.
@@ -56,6 +96,7 @@ struct CharacterSheet: Codable {
     var custom: Bool?        // made in the Spryt maker, or opened from a .spryt file
     var quirks: [String]?    // habits switched off: noflips, nonaps
     var makerPersona: String? // the personality as its maker typed it, kept so it can be edited again
+    var voice: SprytVoice?    // a made Spryt's speaking voice and neighbourly lines
 
     func has(_ quirk: String) -> Bool { (quirks ?? []).contains(quirk) }
 }

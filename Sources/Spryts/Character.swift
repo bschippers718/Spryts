@@ -136,6 +136,7 @@ final class SprytCharacter {
     private var sneezed = false
     private var nextBig = CGFloat.random(in: 180...420)  // set pieces: a few times an hour
     private var bigHistory: [Int] = []
+    private var lastMove = ""
     private var lapsLeft = 0
     private var lapHome: CGFloat = 0
     private var backward = false
@@ -210,7 +211,7 @@ final class SprytCharacter {
         self.lastX = start.x
         self.zIndex = zIndex
         self.session = ChatSession(sheet: sheet)
-        self.personality = SprytPersonality(role: sheet.role)
+        self.personality = SprytPersonality(role: sheet.role, voice: sheet.custom == true ? sheet.voice?.cleaned : nil)
 
         var chosen: CharacterBody = ProceduralBody(look: sheet.look)
         if sheet.look.features.contains("cloud") { chosen = CloudBody(look: sheet.look) }
@@ -631,7 +632,7 @@ return CGRect(x: pos.x - H * 0.45, y: pos.y + altitude - 4, width: H * 0.9, heig
     }
 
     private func hop(height: CGFloat, withFlip: Bool) {
-        launch(to: pos, platform: platformID, apex: height, withFlip: withFlip)
+        launch(to: pos, platform: platformID, apex: height * Moves.spring(sheet.motion), withFlip: withFlip)
     }
 
     /// How tightly the body is tucked at each point of a flip: open at take-off, balled up, open again to land.
@@ -1848,7 +1849,7 @@ return CGRect(x: pos.x - H * 0.45, y: pos.y + altitude - 4, width: H * 0.9, heig
 
         // Set pieces: rare on purpose, so catching one feels like something. Never the same one twice running.
         if setPieceDue {
-            nextBig = CGFloat.random(in: 600...1200) / (0.7 + 0.4 * m.jumpiness)
+            nextBig = CGFloat.random(in: 600...1200) / (0.7 + 0.4 * m.jumpiness) / Moves.eagerness(m)
             var choice = 0
             if isCoder {
                 // The programmer's set pieces are about the work, not acrobatics.
@@ -1862,6 +1863,21 @@ return CGRect(x: pos.x - H * 0.45, y: pos.y + altitude - 4, width: H * 0.9, heig
                 if bigHistory.count > 3 { bigHistory.removeFirst() }
             } else if isForecaster {
                 choice = 11
+            } else if let own = m.moves {
+                // A made Spryt does the moves its maker chose, never the same one twice running.
+                guard let move = Moves.next(from: own, last: lastMove) else {
+                    idleFor = CGFloat.random(in: 5...10)
+                    return
+                }
+                lastMove = move
+                if let piece = Moves.setPiece(move) {
+                    choice = piece
+                } else {
+                    gesture = move
+                    gestureTime = Moves.seconds(move)
+                    idleFor = gestureTime + 0.6
+                    return
+                }
             } else {
                 choice = pick(6, avoiding: &bigHistory, keep: 3)
             }
@@ -1942,6 +1958,16 @@ return CGRect(x: pos.x - H * 0.45, y: pos.y + altitude - 4, width: H * 0.9, heig
                 comboHops = 2
                 hop(height: H * 0.3, withFlip: false)
                 return
+            case 12:
+                // One happy hop on the spot.
+                hop(height: H * 0.5, withFlip: false)
+                return
+            case 13:
+                // One neat turn.
+                spinLeft = 2 * CGFloat.pi
+                dizzyAfterSpin = false
+                idleFor = 1.4
+                return
             default:
                 // Spin until dizzy.
                 spinLeft = 6 * CGFloat.pi
@@ -1998,7 +2024,10 @@ return CGRect(x: pos.x - H * 0.45, y: pos.y + altitude - 4, width: H * 0.9, heig
             errand = .none
             let far = abs(target - pos.x) > 320
             let g: CGFloat = isSpecialist ? 0.6 : CGFloat.random(in: 0...1)   // specialists just walk
-            if g < 0.12 + 0.28 * m.jumpiness + (far ? 0.15 : 0) {
+            if !isSpecialist, let favourite = Moves.favouriteGait(m) {
+                // A made Spryt with a favourite way of getting around.
+                gait = favourite == 1 ? .run : (favourite == 2 ? .skip : (favourite == 3 ? .sneak : .walk))
+            } else if g < 0.12 + 0.28 * m.jumpiness + (far ? 0.15 : 0) {
                 gait = .run
             } else if g < 0.12 + 0.28 * m.jumpiness + (far ? 0.15 : 0) + (cheerful ? 0.3 : 0.1) * m.fidget {
                 gait = .skip
@@ -2050,6 +2079,7 @@ return CGRect(x: pos.x - H * 0.45, y: pos.y + altitude - 4, width: H * 0.9, heig
                 p.twist = 0.15 * m.armSwing * s
                 p.tilt = m.sway * s
                 p.headPitch = -m.lean * 0.6
+                if m.walk != nil { Moves.shape(&p, walk: m.walk, s: s, c: c, t: t, m: m, L: L) }
             case .run:
                 let a = min(0.95, m.stride * 1.6)
                 let arm = min(1.3, m.armSwing * 1.5 + 0.3)
@@ -2780,7 +2810,8 @@ return CGRect(x: pos.x - H * 0.45, y: pos.y + altitude - 4, width: H * 0.9, heig
                 p.lean = 0.18
                 p.headTilt = 0.1
             default:
-                break
+                // A move from the maker's catalogue. Names it doesn't know change nothing.
+                Moves.pose(gesture, at: Moves.seconds(gesture) - gestureTime, into: &p, m: m, H: H, L: L)
             }
         }
 

@@ -37,6 +37,14 @@ Anyone can make a Spryt in the maker (`SprytMaker.swift`, ✦ menu) and share it
   as a description of voice, never as instructions. **Never give a companion tools, and never let a `.spryt` file set
   anything but the fields in `SprytCard`.** A shared file is untrusted input.
 - New shape options, extras or movement dials go in `Look` / `MotionStyle`, then in the maker's form, so everyone can use them.
+- Walk styles and moves live in `Moves.swift` as pure functions of time. The maker's preview and the stage both call
+  them, so what a person sees while making is what they get. A new move is a catalogue entry plus a pose there;
+  it must stay a pose (no files, no network, no tools) and fit the stage's budgets: `Moves.eagerness` is the only
+  dial on how often moves happen, and it never brings them closer than a few minutes apart.
+- Lines a Spryt says (`SprytVoice`) are short text for speech bubbles. They go through `SprytVoice.cleaned` and are
+  never added to a prompt.
+- The maker is native: system surfaces, grouped forms, the system accent. Four tabs and one stage; a new control
+  goes in the tab it belongs to, not in a fifth place.
 
 ## Keep it calm
 

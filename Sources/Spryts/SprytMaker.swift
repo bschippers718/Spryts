@@ -5,16 +5,17 @@ import UniformTypeIdentifiers
 
 // MARK: - A Spryt as a file you can share
 
-/// What travels in a .spryt file: how it looks, how it moves, its name and its personality. Nothing else.
+/// What travels in a .spryt file: how it looks, how it moves, its name, its personality and its voice. Nothing else.
 /// A shared Spryt never carries a job, tools, an engine or anything that reaches beyond a chat.
 struct SprytCard: Codable {
-    var version = 1
+    var version = 2
     var name: String
     var persona: String
     var look: Look
     var motion: MotionStyle
     var signature: String?
     var quirks: [String]?
+    var voice: SprytVoice?
 }
 
 extension NSColor {
@@ -28,12 +29,89 @@ extension NSColor {
     }
 }
 
+/// A ready-made Spryt to start from. Every part of it can be changed afterwards.
+struct MakerPreset: Identifiable {
+    let id: String
+    let card: SprytCard
+
+    private static func motion(_ speed: CGFloat, _ stride: CGFloat, _ bounce: CGFloat, _ arms: CGFloat, _ lean: CGFloat,
+                               _ tempo: CGFloat, _ fidget: CGFloat, _ jumpiness: CGFloat, _ sway: CGFloat,
+                               walk: String, travel: String, spring: CGFloat, showOff: CGFloat, moves: [String]) -> MotionStyle {
+        MotionStyle(speed: speed, stride: stride, bounce: bounce, armSwing: arms, lean: lean, tempo: tempo, fidget: fidget,
+                    jumpiness: jumpiness, sway: sway, walk: walk, travel: travel, spring: spring, showOff: showOff, moves: moves)
+    }
+
+    static let all: [MakerPreset] = [
+        MakerPreset(id: "Sprout", card: SprytCard(
+            name: "Sprout", persona: MakerModel.defaultPersona,
+            look: Look(body: "#5BB98C", accent: "#F4FFF6", skin: "#FFE2B8", height: 104, headScale: 1.15, features: ["antenna"],
+                       trim: "#F2C94C", head: "round", eyes: "two", eyeSize: 1, snout: "none", legs: 1, arms: 1, torso: 1,
+                       limbs: 1, feet: 1, belly: true, build: "bean"),
+            motion: motion(80, 0.5, 5, 0.75, 0.06, 1.1, 0.7, 0.6, 0.06, walk: "natural", travel: "mix", spring: 1, showOff: 0.4,
+                           moves: ["jump", "twirl", "dance", "wiggle", "wave"]),
+            signature: nil, quirks: nil,
+            voice: SprytVoice(pitch: 1.1, pace: 1.0, energy: 0.8, greeting: "wave", hellos: nil, replies: nil))),
+        MakerPreset(id: "Fox", card: SprytCard(
+            name: "Ember Fox", persona: "Quick and sly, with a soft spot for whoever is nearby. Teases gently. Short sentences.",
+            look: Look(body: "#E8743B", accent: "#FFF3E4", skin: "#F7A65A", height: 98, headScale: 1.2, features: ["ears", "foxtail", "scarf"],
+                       trim: "#3F7CAC", head: "wide", eyes: "two", eyeSize: 1.1, snout: "muzzle", legs: 0.9, arms: 0.9, torso: 0.95,
+                       limbs: 0.9, feet: 0.9, belly: true, build: "bean"),
+            motion: motion(96, 0.6, 4, 0.7, 0.1, 1.3, 0.8, 0.85, 0.05, walk: "natural", travel: "sneak", spring: 1.3, showOff: 0.55,
+                           moves: ["jump", "hops", "flip", "twirl", "stretch"]),
+            signature: nil, quirks: nil,
+            voice: SprytVoice(pitch: 1.15, pace: 1.1, energy: 0.9, greeting: "nod",
+                              hellos: ["Psst, {name}. Seen anything worth chasing?"], replies: ["Clever. I like clever."]))),
+        MakerPreset(id: "Robot", card: SprytCard(
+            name: "Bolt", persona: "A polite little robot who takes things literally and is delighted by small facts. Precise, kind, a touch formal.",
+            look: Look(body: "#7C8AA5", accent: "#DDE6F5", skin: "#C9D3E3", height: 108, headScale: 1.1, features: ["stalks", "wristbands"],
+                       trim: "#4FD1C5", head: "box", eyes: "one", eyeSize: 1, snout: "none", legs: 0.95, arms: 1.05, torso: 1.1,
+                       limbs: 1.2, feet: 1.3, belly: false, build: "block"),
+            motion: motion(66, 0.45, 2, 0.6, 0, 0.9, 0.5, 0.3, 0.02, walk: "march", travel: "walk", spring: 0.8, showOff: 0.35,
+                           moves: ["stomp", "flex", "jacks", "twirl", "bow"]),
+            signature: "spark", quirks: ["noflips"],
+            voice: SprytVoice(pitch: 0.85, pace: 0.95, energy: 0.5, greeting: "bow",
+                              hellos: ["Greetings, {name}. Proximity detected."], replies: ["Acknowledged. Pleasantly."]))),
+        MakerPreset(id: "Dragon", card: SprytCard(
+            name: "Cinder", persona: "A very small dragon with very large confidence. Dramatic, loyal, easily impressed by snacks.",
+            look: Look(body: "#7A4BC2", accent: "#F3E9FF", skin: "#9B6BE0", height: 112, headScale: 1.15, features: ["horns", "wings", "dragontail", "spikes"],
+                       trim: "#F2A83B", head: "tall", eyes: "two", eyeSize: 0.95, snout: "muzzle", legs: 1.05, arms: 0.95, torso: 1.15,
+                       limbs: 1.15, feet: 1.2, belly: true, build: "bean"),
+            motion: motion(74, 0.55, 4, 0.9, -0.04, 1.0, 0.6, 0.7, 0.12, walk: "strut", travel: "walk", spring: 1.4, showOff: 0.6,
+                           moves: ["flip", "flex", "stomp", "spin", "lap"]),
+            signature: "smoke", quirks: nil,
+            voice: SprytVoice(pitch: 0.9, pace: 0.95, energy: 1.1, greeting: "pump",
+                              hellos: ["{name}! Behold. It is I."], replies: ["A worthy reply."]))),
+        MakerPreset(id: "Bunny", card: SprytCard(
+            name: "Clover", persona: "Sunny and a bit shy. Hums to itself. Encouraging, never pushy.",
+            look: Look(body: "#F3B6CF", accent: "#FFFFFF", skin: "#FBE3EC", height: 92, headScale: 1.3, features: ["longears", "stub"],
+                       trim: "#F78DA7", head: "round", eyes: "two", eyeSize: 1.25, snout: "nose", legs: 1.1, arms: 0.85, torso: 0.9,
+                       limbs: 0.9, feet: 1.4, belly: true, build: "round"),
+            motion: motion(84, 0.5, 8, 0.7, 0.04, 1.2, 0.85, 0.9, 0.05, walk: "bounce", travel: "skip", spring: 1.6, showOff: 0.6,
+                           moves: ["jump", "hops", "jacks", "wiggle", "dance", "wave"]),
+            signature: nil, quirks: nil,
+            voice: SprytVoice(pitch: 1.35, pace: 1.05, energy: 0.9, greeting: "wave",
+                              hellos: ["Oh! Hi, {name}."], replies: ["That's so nice of you."]))),
+        MakerPreset(id: "Blob", card: SprytCard(
+            name: "Mochi", persona: "Unhurried and content. Says little, means all of it. Fond of naps and quiet company.",
+            look: Look(body: "#6CC5D9", accent: "#EFFBFF", skin: "#8FD8E8", height: 78, headScale: 1.45, features: ["roundears"],
+                       trim: "#2D9CB3", head: "flat", eyes: "three", eyeSize: 1.05, snout: "none", legs: 0.65, arms: 0.7, torso: 1.4,
+                       limbs: 1.3, feet: 1.2, belly: false, build: "round"),
+            motion: motion(52, 0.35, 3, 0.4, 0.02, 0.75, 0.4, 0.2, 0.1, walk: "waddle", travel: "walk", spring: 0.7, showOff: 0.25,
+                           moves: ["wiggle", "stretch", "shimmy", "swing"]),
+            signature: nil, quirks: ["noflips"],
+            voice: SprytVoice(pitch: 1.0, pace: 0.85, energy: 0.5, greeting: "nod",
+                              hellos: ["Mm. Hello, {name}."], replies: ["Mm-hm."]))),
+    ]
+}
+
 // MARK: - The Spryt being made
 
 final class MakerModel: ObservableObject {
     @Published var id = ""                 // empty until saved; "my-…" afterwards
     @Published var name = "Sprout"
     @Published var persona = MakerModel.defaultPersona
+
+    // Look
     @Published var body = Color(nsColor: NSColor(hex: "#5BB98C"))
     @Published var accent = Color(nsColor: NSColor(hex: "#F4FFF6"))
     @Published var skin = Color(nsColor: NSColor(hex: "#FFE2B8"))
@@ -44,6 +122,7 @@ final class MakerModel: ObservableObject {
     @Published var eyes = "two"
     @Published var eyeSize: CGFloat = 1
     @Published var snout = "none"
+    @Published var build = "bean"
     @Published var legs: CGFloat = 1
     @Published var arms: CGFloat = 1
     @Published var torso: CGFloat = 1
@@ -51,59 +130,134 @@ final class MakerModel: ObservableObject {
     @Published var feet: CGFloat = 1
     @Published var belly = true
     @Published var features: Set<String> = ["antenna"]
-    @Published var motion = MotionStyle(speed: 80, stride: 0.5, bounce: 5, armSwing: 0.75, lean: 0.06,
-                                        tempo: 1.1, fidget: 0.7, jumpiness: 0.6, sway: 0.06)
+
+    // Movement
+    @Published var motion = MakerModel.defaultMotion
+    @Published var walk = "natural"
+    @Published var travel = "mix"
+    @Published var spring: CGFloat = 1
+    @Published var showOff: CGFloat = 0.4
+    @Published var moves: Set<String> = ["jump", "twirl", "dance", "wiggle", "wave"]
     @Published var signature = "none"
-    @Published var flips = true
     @Published var naps = true
-    @Published var notice = ""             // a line under the buttons: what just happened, or a warning
+
+    // Voice
+    @Published var pitch: CGFloat = 1.1
+    @Published var pace: CGFloat = 1.0
+    @Published var energy: CGFloat = 0.8
+    @Published var greeting = "wave"
+    @Published var hellos = ""
+    @Published var replies = ""
+
+    @Published var notice = ""             // one quiet line: what just happened, or a warning
     @Published var mine: [CharacterSheet] = []
 
     static let defaultPersona = "Cheerful and curious, a little cheeky. Short, warm sentences. Loves a good pun."
+    static let defaultMotion = MotionStyle(speed: 80, stride: 0.5, bounce: 5, armSwing: 0.75, lean: 0.06,
+                                           tempo: 1.1, fidget: 0.7, jumpiness: 0.6, sway: 0.06)
 
-    static let extras: [(id: String, label: String)] = [
-        ("antenna", "Antenna"), ("stalks", "Eye stalks"), ("ears", "Pointed ears"), ("longears", "Long ears"),
-        ("roundears", "Round ears"), ("horns", "Horns"), ("spikes", "Spikes"), ("wings", "Wings"),
-        ("cape", "Cape"), ("scarf", "Scarf"), ("headband", "Headband"), ("wristbands", "Wristbands"),
-        ("tail", "Tail"), ("foxtail", "Fox tail"), ("dragontail", "Dragon tail"), ("stub", "Stub tail"),
+    static let heads = ["round", "wide", "tall", "flat", "box"]
+    static let eyeKinds = ["two", "one", "three"]
+    static let snouts = ["none", "nose", "muzzle", "beak"]
+    static let builds = ["bean", "round", "block"]
+    static let signatures = ["none", "spark", "smoke"]
+
+    /// Extras in three groups, the way a person thinks about them.
+    static let extraGroups: [(title: String, items: [(id: String, label: String)])] = [
+        ("On top", [("antenna", "Antenna"), ("stalks", "Eye stalks"), ("ears", "Pointed ears"), ("longears", "Long ears"),
+                    ("roundears", "Round ears"), ("horns", "Horns")]),
+        ("Behind", [("tail", "Tail"), ("foxtail", "Fox tail"), ("dragontail", "Dragon tail"), ("stub", "Stub tail"),
+                    ("wings", "Wings"), ("spikes", "Spikes"), ("cape", "Cape")]),
+        ("Wearing", [("scarf", "Scarf"), ("headband", "Headband"), ("wristbands", "Wristbands")]),
+    ]
+    static let extras: [(id: String, label: String)] = extraGroups.flatMap { $0.items }
+
+    /// Only one of each of these fits on a body, so choosing one lets go of the others.
+    private static let exclusive: [Set<String>] = [
+        ["antenna", "stalks"], ["ears", "longears", "roundears", "horns"], ["tail", "foxtail", "dragontail", "stub"],
+    ]
+
+    static let tones: [(name: String, text: String)] = [
+        ("Cheerful", MakerModel.defaultPersona),
+        ("Dry wit", "Deadpan and observant. Understated jokes, never mean. Says the quiet part quietly."),
+        ("Gentle", "Soft-spoken and patient. Notices how you are doing. Encouraging without fuss."),
+        ("Bold", "Big-hearted and loud about it. Treats every small win like a parade. Loyal to a fault."),
+        ("Poetic", "Sees a little wonder in ordinary things. Speaks in short, vivid images. Never flowery for long."),
+        ("Nerdy", "Delighted by facts, footnotes and how things work. Precise, enthusiastic, easily sidetracked."),
+        ("Grumpy", "Gruff on the surface, kind underneath. Complains fondly. Would never admit to caring this much."),
+        ("Mysterious", "Speaks in hints and half-smiles. Knows more than it says. Warm once you are in on it."),
     ]
 
     init() {
         reloadMine()
     }
 
+    // MARK: What gets built
+
     var look: Look {
         Look(body: NSColor(body).hexString, accent: NSColor(accent).hexString, skin: NSColor(skin).hexString,
              height: height, headScale: headScale,
              features: MakerModel.extras.map { $0.id }.filter { features.contains($0) },
              trim: NSColor(trim).hexString, head: head, eyes: eyes, eyeSize: eyeSize, snout: snout,
-             legs: legs, arms: arms, torso: torso, limbs: limbs, feet: feet, belly: belly)
+             legs: legs, arms: arms, torso: torso, limbs: limbs, feet: feet, belly: belly, build: build)
     }
 
     /// Changes whenever the shape or colours do, so the preview knows to rebuild the body.
     var lookKey: String {
         let l = look
         let numbers = [l.height, l.headScale, l.eyeSize ?? 1, l.legs ?? 1, l.arms ?? 1, l.torso ?? 1, l.limbs ?? 1, l.feet ?? 1]
-        return [l.body, l.accent, l.skin, l.trim ?? "", l.head ?? "", l.eyes ?? "", l.snout ?? "",
+        return [l.body, l.accent, l.skin, l.trim ?? "", l.head ?? "", l.eyes ?? "", l.snout ?? "", l.build ?? "",
                 l.features.joined(separator: ","), belly ? "b" : "n"].joined(separator: "|")
             + numbers.map { String(format: "%.2f", Double($0)) }.joined(separator: "|")
     }
 
+    /// The nine dials plus this Spryt's own way of walking, travelling and showing off.
+    var fullMotion: MotionStyle {
+        var m = motion
+        m.walk = walk
+        m.travel = travel
+        m.spring = spring
+        m.showOff = showOff
+        m.moves = Moves.known(Array(moves))
+        return m
+    }
+
+    /// Changes whenever anything about the movement does.
+    var motionKey: String {
+        let m = motion
+        let numbers = [m.speed, m.stride, m.bounce, m.armSwing, m.lean, m.tempo, m.fidget, m.jumpiness, m.sway, spring, showOff]
+        return numbers.map { String(format: "%.3f", Double($0)) }.joined(separator: "|") + walk + travel
+    }
+
+    var voice: SprytVoice {
+        SprytVoice(pitch: pitch, pace: pace, energy: energy, greeting: greeting,
+                   hellos: hellos.components(separatedBy: .newlines), replies: replies.components(separatedBy: .newlines)).cleaned
+    }
+
     var quirks: [String] {
         var out: [String] = []
-        if !flips { out.append("noflips") }
+        if !moves.contains("flip") { out.append("noflips") }
         if !naps { out.append("nonaps") }
         return out
     }
 
     var card: SprytCard {
         SprytCard(name: cleanName, persona: persona.trimmingCharacters(in: .whitespacesAndNewlines),
-                  look: look, motion: motion, signature: signature == "none" ? nil : signature, quirks: quirks)
+                  look: look, motion: fullMotion, signature: signature == "none" ? nil : signature, quirks: quirks, voice: voice)
     }
 
     var cleanName: String {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? "Sprout" : String(trimmed.prefix(24))
+    }
+
+    func toggle(extra id: String) {
+        if features.contains(id) {
+            features.remove(id)
+            return
+        }
+        for group in MakerModel.exclusive where group.contains(id) { features.subtract(group) }
+        features.insert(id)
     }
 
     // MARK: Loading and saving
@@ -114,62 +268,84 @@ final class MakerModel: ObservableObject {
         mine = Config.loadSheets().filter { $0.custom == true }
     }
 
+    /// Takes a card from a preset, a saved Spryt or a shared file. Every value is brought inside what the
+    /// maker's own controls allow, and anything it doesn't know is replaced with the plain choice.
     func load(_ card: SprytCard) {
-        name = card.name
-        persona = card.persona
+        func within(_ value: CGFloat, _ range: ClosedRange<CGFloat>) -> CGFloat {
+            value.isFinite ? min(range.upperBound, max(range.lowerBound, value)) : range.lowerBound
+        }
+        func known(_ value: String?, _ options: [String]) -> String {
+            options.contains(value ?? "") ? (value ?? options[0]) : options[0]
+        }
+        name = String(card.name.prefix(24))
+        persona = String(card.persona.prefix(600))
         let l = card.look
         body = Color(nsColor: NSColor(hex: l.body))
         accent = Color(nsColor: NSColor(hex: l.accent))
         skin = Color(nsColor: NSColor(hex: l.skin))
         trim = Color(nsColor: NSColor(hex: l.trim ?? l.accent))
-        height = min(130, max(60, l.height))
-        headScale = min(1.6, max(0.8, l.headScale))
-        head = l.head ?? "round"
-        eyes = l.eyes ?? "two"
-        eyeSize = min(1.6, max(0.6, l.eyeSize ?? 1))
-        snout = l.snout ?? "none"
-        legs = min(1.5, max(0.6, l.legs ?? 1))
-        arms = min(1.5, max(0.6, l.arms ?? 1))
-        torso = min(1.5, max(0.7, l.torso ?? 1))
-        limbs = min(1.6, max(0.6, l.limbs ?? 1))
-        feet = min(1.6, max(0.6, l.feet ?? 1))
+        height = within(l.height, 60...130)
+        headScale = within(l.headScale, 0.8...1.6)
+        head = known(l.head, MakerModel.heads)
+        eyes = known(l.eyes, MakerModel.eyeKinds)
+        eyeSize = within(l.eyeSize ?? 1, 0.6...1.6)
+        snout = known(l.snout, MakerModel.snouts)
+        build = known(l.build, MakerModel.builds)
+        legs = within(l.legs ?? 1, 0.6...1.5)
+        arms = within(l.arms ?? 1, 0.6...1.5)
+        torso = within(l.torso ?? 1, 0.7...1.5)
+        limbs = within(l.limbs ?? 1, 0.6...1.6)
+        feet = within(l.feet ?? 1, 0.6...1.6)
         belly = l.belly != false
-        let known = Set(MakerModel.extras.map { $0.id })
-        features = Set(l.features).intersection(known)
-        var m = card.motion
-        m.speed = min(120, max(40, m.speed))
-        m.stride = min(0.9, max(0.2, m.stride))
-        m.bounce = min(10, max(0, m.bounce))
-        m.armSwing = min(1.2, max(0.2, m.armSwing))
-        m.lean = min(0.2, max(-0.1, m.lean))
-        m.tempo = min(1.6, max(0.6, m.tempo))
-        m.fidget = min(1, max(0, m.fidget))
-        m.jumpiness = min(1, max(0, m.jumpiness))
-        m.sway = min(0.2, max(0, m.sway))
-        motion = m
-        signature = ["spark", "smoke"].contains(card.signature ?? "") ? (card.signature ?? "none") : "none"
-        flips = !(card.quirks ?? []).contains("noflips")
+        features = Set(l.features).intersection(Set(MakerModel.extras.map { $0.id }))
+
+        let source = card.motion
+        motion = MotionStyle(speed: within(source.speed, 40...120), stride: within(source.stride, 0.2...0.9),
+                             bounce: within(source.bounce, 0...10), armSwing: within(source.armSwing, 0.2...1.2),
+                             lean: within(source.lean, -0.1...0.2), tempo: within(source.tempo, 0.6...1.6),
+                             fidget: within(source.fidget, 0...1), jumpiness: within(source.jumpiness, 0...1),
+                             sway: within(source.sway, 0...0.2))
+        walk = Moves.walkID(source.walk)
+        travel = Moves.travelID(source.travel)
+        spring = within(source.spring ?? 1, 0.6...1.8)
+        showOff = within(source.showOff ?? 0.4, 0...1)
+        var chosen = Set(Moves.known(source.moves ?? Moves.standard))
+        if (card.quirks ?? []).contains("noflips") { chosen.remove("flip") }
+        moves = chosen
+        signature = known(card.signature, MakerModel.signatures)
         naps = !(card.quirks ?? []).contains("nonaps")
+
+        // A Spryt from before voices existed keeps the voice it had: pitched by its height, paced by its tempo.
+        let said = card.voice?.cleaned
+        pitch = said?.pitch ?? within(1 + (110 - height) / 110, 0.8...1.45)
+        pace = said?.pace ?? within(motion.tempo, 0.85...1.25)
+        energy = said?.energy ?? 0.75
+        greeting = said?.greeting ?? "wave"
+        hellos = (said?.hellos ?? []).joined(separator: "\n")
+        replies = (said?.replies ?? []).joined(separator: "\n")
     }
 
     func edit(_ sheet: CharacterSheet) {
         load(SprytCard(name: sheet.name, persona: sheet.makerPersona ?? "", look: sheet.look, motion: sheet.motion,
-                       signature: sheet.signature, quirks: sheet.quirks))
+                       signature: sheet.signature, quirks: sheet.quirks, voice: sheet.voice))
         id = sheet.id
         notice = "Editing \(sheet.name)."
     }
 
     func startNew() {
         id = ""
-        load(SprytCard(name: "Sprout", persona: MakerModel.defaultPersona, look: MakerModel().look,
-                       motion: MotionStyle(speed: 80, stride: 0.5, bounce: 5, armSwing: 0.75, lean: 0.06,
-                                           tempo: 1.1, fidget: 0.7, jumpiness: 0.6, sway: 0.06),
-                       signature: nil, quirks: nil))
-        features = ["antenna"]
+        load(MakerPreset.all[0].card)
         notice = ""
     }
 
-    /// A fresh throw of the dice for everything you can see.
+    func start(from preset: MakerPreset) {
+        let keepName = id.isEmpty ? nil : name
+        load(preset.card)
+        if let keepName { name = keepName }
+        notice = ""
+    }
+
+    /// A fresh throw of the dice for everything you can see and everything it does.
     func surprise() {
         func shade(_ saturation: ClosedRange<CGFloat>, _ brightness: ClosedRange<CGFloat>) -> Color {
             Color(nsColor: NSColor(hue: CGFloat.random(in: 0...1), saturation: CGFloat.random(in: saturation),
@@ -178,31 +354,37 @@ final class MakerModel: ObservableObject {
         body = shade(0.45...0.85, 0.65...0.95)
         accent = shade(0.02...0.15, 0.92...1.0)
         trim = shade(0.5...0.9, 0.6...0.95)
-        height = CGFloat.random(in: 84...122)
-        headScale = CGFloat.random(in: 0.95...1.4)
-        head = ["round", "wide", "tall", "box"].randomElement() ?? "round"
-        eyes = CGFloat.random(in: 0...1) < 0.2 ? "one" : "two"
+        height = CGFloat.random(in: 80...122)
+        headScale = CGFloat.random(in: 0.95...1.45)
+        head = MakerModel.heads.randomElement() ?? "round"
+        eyes = ["two", "two", "two", "one", "three"].randomElement() ?? "two"
         eyeSize = CGFloat.random(in: 0.8...1.4)
         snout = ["none", "none", "nose", "muzzle", "beak"].randomElement() ?? "none"
-        legs = CGFloat.random(in: 0.75...1.3)
-        arms = CGFloat.random(in: 0.8...1.25)
-        torso = CGFloat.random(in: 0.85...1.3)
+        build = ["bean", "bean", "round", "block"].randomElement() ?? "bean"
+        legs = CGFloat.random(in: 0.7...1.3)
+        arms = CGFloat.random(in: 0.75...1.25)
+        torso = CGFloat.random(in: 0.85...1.35)
         limbs = CGFloat.random(in: 0.8...1.35)
         feet = CGFloat.random(in: 0.8...1.4)
         belly = Bool.random()
-        let tops = ["antenna", "stalks", "ears", "longears", "roundears", "horns"]
-        let backs = ["", "", "tail", "foxtail", "dragontail", "stub", "wings", "cape", "spikes"]
-        let wears = ["", "", "scarf", "headband", "wristbands"]
         var picked: Set<String> = []
-        if let top = tops.randomElement() { picked.insert(top) }
-        if let back = backs.randomElement(), !back.isEmpty { picked.insert(back) }
-        if let wear = wears.randomElement(), !wear.isEmpty { picked.insert(wear) }
+        for group in MakerModel.extraGroups {
+            if Bool.random() || group.title == "On top", let item = group.items.randomElement() { picked.insert(item.id) }
+        }
         features = picked
         motion = MotionStyle(speed: CGFloat.random(in: 55...105), stride: CGFloat.random(in: 0.35...0.75),
                              bounce: CGFloat.random(in: 2...8), armSwing: CGFloat.random(in: 0.45...1.05),
                              lean: CGFloat.random(in: 0...0.12), tempo: CGFloat.random(in: 0.8...1.4),
                              fidget: CGFloat.random(in: 0.4...0.95), jumpiness: CGFloat.random(in: 0.2...0.9),
                              sway: CGFloat.random(in: 0.02...0.14))
+        walk = Moves.walks.randomElement()?.id ?? "natural"
+        travel = ["mix", "mix", "walk", "skip", "run", "sneak"].randomElement() ?? "mix"
+        spring = CGFloat.random(in: 0.8...1.6)
+        showOff = CGFloat.random(in: 0.3...0.7)
+        moves = Set(Moves.library.map { $0.id }.shuffled().prefix(Int.random(in: 4...6)))
+        pitch = CGFloat.random(in: 0.85...1.4)
+        pace = CGFloat.random(in: 0.9...1.15)
+        greeting = SprytVoice.greetings.randomElement() ?? "wave"
     }
 
     /// The full instructions for the AI: a fixed frame that keeps a home-made or shared Spryt to conversation,
@@ -225,6 +407,16 @@ final class MakerModel: ObservableObject {
         return trimmed.isEmpty ? "spryt" : String(trimmed.prefix(20))
     }
 
+    /// The sheet as it would be saved. Always a companion: conversation only, no tools.
+    func sheet(id: String) -> CharacterSheet {
+        let lead = Config.loadSheets().first(where: { $0.custom != true })
+        return CharacterSheet(id: id, name: cleanName, provider: lead?.provider ?? "claude",
+                              model: lead?.model ?? "claude-haiku-5-5", persona: framedPersona(),
+                              look: look, motion: fullMotion, harness: "claude-code", sleepAfter: 180,
+                              order: 50, role: "companion", signature: signature == "none" ? nil : signature,
+                              custom: true, quirks: quirks, makerPersona: persona, voice: voice)
+    }
+
     /// Writes the Spryt into the Characters folder. Returns true if it was saved.
     func save() -> Bool {
         let existing = Config.loadSheets()
@@ -238,16 +430,10 @@ final class MakerModel: ObservableObject {
             }
             id = candidate
         }
-        let lead = existing.first(where: { $0.custom != true })
-        let sheet = CharacterSheet(id: id, name: cleanName, provider: lead?.provider ?? "claude",
-                                   model: lead?.model ?? "claude-haiku-5-5", persona: framedPersona(),
-                                   look: look, motion: motion, harness: "claude-code", sleepAfter: 180,
-                                   order: 50, role: "companion", signature: signature == "none" ? nil : signature,
-                                   custom: true, quirks: quirks, makerPersona: persona)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         do {
-            let data = try encoder.encode(sheet)
+            let data = try encoder.encode(sheet(id: id))
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
             try data.write(to: folder.appendingPathComponent(id + ".json"), options: .atomic)
             reloadMine()
@@ -271,7 +457,7 @@ final class MakerModel: ObservableObject {
             try FileManager.default.moveItem(at: from, to: to)
             if id == sheet.id { id = "" }
             reloadMine()
-            notice = "\(sheet.name) is put away. Restart Spryts to take it off the stage."
+            notice = "\(sheet.name) is put away. It leaves the stage the next time Spryts starts."
         } catch {
             notice = "Couldn't put \(sheet.name) away: " + error.localizedDescription
         }
@@ -280,7 +466,7 @@ final class MakerModel: ObservableObject {
     func export() {
         let panel = NSSavePanel()
         panel.nameFieldStringValue = cleanName + ".spryt"
-        panel.message = "A .spryt file holds this Spryt's look, movement, name and personality. Anyone with Spryts can open it."
+        panel.message = "A .spryt file holds this Spryt's look, moves, name, personality and voice. Anyone with Spryts can open it."
         if panel.runModal() != .OK { return }
         guard let url = panel.url else { return }
         let encoder = JSONEncoder()
@@ -306,9 +492,7 @@ final class MakerModel: ObservableObject {
             let card = try JSONDecoder().decode(SprytCard.self, from: data)
             id = ""
             load(card)
-            name = String(card.name.prefix(24))
-            persona = String(card.persona.prefix(600))
-            notice = "Opened \(cleanName). Its personality text came with the file: read it over before you save."
+            notice = "Opened \(cleanName). Its personality and lines came with the file: read them over in Voice before you save."
         } catch {
             notice = "That file isn't a Spryt this version can read."
         }
@@ -317,7 +501,8 @@ final class MakerModel: ObservableObject {
 
 // MARK: - The live preview
 
-/// A small stage of its own where the Spryt being made walks, stands and waves with the dials as they are now.
+/// A small stage of its own where the Spryt being made moves exactly as it will on the screen.
+/// It loops one way of getting around, and plays a move once when asked.
 final class MakerStage: ObservableObject {
     let view = SCNView()
     private let scene = SCNScene()
@@ -328,8 +513,18 @@ final class MakerStage: ObservableObject {
     private var time: CGFloat = 0
     private var phase: CGFloat = 0
     private var built = ""
-    var motion = MotionStyle(speed: 80, stride: 0.5, bounce: 5, armSwing: 0.75, lean: 0.06, tempo: 1.1, fidget: 0.7, jumpiness: 0.6, sway: 0.06)
-    var action = "walk"
+    private var height: CGFloat = 104
+    private var moveClock: CGFloat = 0
+
+    var motion = MakerModel.defaultMotion
+    /// What it does between moves: stand, walk, skip, run or sneak.
+    @Published var loop = "walk"
+    /// The move being shown right now, if any.
+    @Published private(set) var playing: String?
+
+    /// The camera frames a little more than two Spryts of height, so a flip stays in view.
+    static let span: CGFloat = 150
+    static let eye: CGFloat = 112
 
     init() {
         view.scene = scene
@@ -338,12 +533,12 @@ final class MakerStage: ObservableObject {
         view.allowsCameraControl = false
         let camera = SCNCamera()
         camera.usesOrthographicProjection = true
-        camera.orthographicScale = 105
+        camera.orthographicScale = Double(MakerStage.span)
         camera.zNear = 1
         camera.zFar = 4000
         let cameraNode = SCNNode()
         cameraNode.camera = camera
-        cameraNode.position = v3(0, 70, 1500)
+        cameraNode.position = v3(0, MakerStage.eye, 1500)
         scene.rootNode.addChildNode(cameraNode)
         view.pointOfView = cameraNode
 
@@ -367,10 +562,17 @@ final class MakerStage: ObservableObject {
     func show(_ look: Look, key: String) {
         if key == built { return }
         built = key
+        height = look.height
         body?.root.removeFromParentNode()
         let fresh = ProceduralBody(look: look)
         holder.addChildNode(fresh.root)
         body = fresh
+    }
+
+    /// Plays one move from the catalogue, once, then goes back to what it was doing.
+    func play(_ move: String) {
+        moveClock = 0
+        playing = move
     }
 
     func start() {
@@ -389,46 +591,41 @@ final class MakerStage: ObservableObject {
         guard let body else { return }
         let dt: CGFloat = 1.0 / 60.0
         time += dt
-        var p = Pose()
         let m = motion
-        if action == "walk" {
-            // The same walk the characters use on the stage, on the spot.
-            phase += dt * m.speed / 11
-            let s = sin(phase)
-            let c = cos(phase)
-            p.yaw = 0.75
-            p.legL = m.stride * s
-            p.legR = -m.stride * s
-            p.kneeL = 1.2 * m.stride * max(0, c)
-            p.kneeR = 1.2 * m.stride * max(0, -c)
-            p.armL = -m.armSwing * s
-            p.armR = m.armSwing * s
-            p.elbowL = 0.25 + 0.35 * max(0, -s)
-            p.elbowR = 0.25 + 0.35 * max(0, s)
-            p.bodyY = m.bounce * (abs(c) - 0.6)
-            p.lean = m.lean
-            p.twist = 0.15 * m.armSwing * s
-            p.tilt = m.sway * s
-            p.smile = 0.5
+        var target = Pose()
+        var lift: CGFloat = 0
+        var roll: CGFloat = 0
+        var spin: CGFloat = 0
+        var moving = false
+
+        if let move = playing {
+            moveClock += dt
+            let frame = Moves.frame(move, at: moveClock, m: m, H: height, L: body.legLength)
+            target = frame.pose
+            lift = frame.lift
+            roll = frame.roll
+            spin = frame.spin
+            if moveClock >= Moves.seconds(move) { playing = nil }
+        } else if loop == "stand" {
+            // Standing: breathing and a slow look around.
+            target.yaw = 0.35
+            target.bodyY = 1.2 * sin(time * 2.2)
+            target.headYaw = 0.25 * sin(time * 0.7)
+            target.lookX = 0.5 * sin(time * 0.7)
+            target.smile = 0.6
         } else {
-            // Standing: breathing, a slow look around, and a wave if asked.
-            p.bodyY = 1.2 * sin(time * 2.2)
-            p.headYaw = 0.25 * sin(time * 0.7)
-            p.lookX = 0.5 * sin(time * 0.7)
-            p.smile = 0.6
-            if action == "wave" {
-                p.armOutR = 2.5
-                p.armR = 0.1
-                p.elbowR = 0.5 + 0.5 * sin(time * 12)
-                p.smile = 1
-                p.mouthOpen = 0.3
-            }
+            phase += dt * m.speed / 11 * Moves.cadence(loop)
+            target = Moves.travelPose(loop, phase: phase, t: time, m: m, L: body.legLength)
+            moving = true
         }
         // A blink every few seconds.
-        if time.truncatingRemainder(dividingBy: 3.4) < 0.12 { p.eyeOpen = 0.06 }
-        pose.approach(p, 0.22)
-        pose.eyeOpen = p.eyeOpen
-        body.apply(pose: pose, clip: action == "walk" ? "walk" : "idle", dt: dt, showProp: false, speed: action == "walk" ? m.speed : 0, time: time)
+        if time.truncatingRemainder(dividingBy: 3.4) < 0.12 { target.eyeOpen = min(target.eyeOpen, 0.06) }
+        pose.approach(target, 0.22)
+        pose.eyeOpen = target.eyeOpen
+        pose.roll = roll
+        pose.spin = spin
+        holder.position = v3(0, lift, 0)
+        body.apply(pose: pose, clip: moving ? "walk" : "idle", dt: dt, showProp: false, speed: moving ? m.speed : 0, time: time)
     }
 }
 
@@ -441,225 +638,402 @@ struct MakerStageView: NSViewRepresentable {
 
 // MARK: - The maker window
 
+private enum MakerTab: String, CaseIterable, Identifiable {
+    case look = "Look", movement = "Movement", moves = "Moves", voice = "Voice"
+    var id: String { rawValue }
+}
+
 struct SprytMakerView: View {
     @StateObject private var model = MakerModel()
     @StateObject private var stage = MakerStage()
-    @State private var action = "walk"
+    @State private var tab = MakerTab.look
+    @State private var putAway: CharacterSheet?
     let onRestart: () -> Void
-
-    private let ink = Color(red: 0.09, green: 0.10, blue: 0.16)
 
     var body: some View {
         HStack(spacing: 0) {
-            left.frame(width: 340)
-            Rectangle().fill(Color.white.opacity(0.08)).frame(width: 1)
-            form
+            stagePane.frame(minWidth: 360, maxWidth: .infinity)
+            Divider()
+            inspector.frame(width: 430)
         }
-        .background(ink)
-        .fontDesign(.rounded)
-        .environment(\.colorScheme, .dark)
         .onAppear {
             stage.show(model.look, key: model.lookKey)
-            stage.motion = model.motion
+            stage.motion = model.fullMotion
             stage.start()
         }
         .onDisappear { stage.stop() }
         .onChange(of: model.lookKey) { stage.show(model.look, key: model.lookKey) }
-        .onChange(of: model.motion.speed + model.motion.stride + model.motion.bounce + model.motion.armSwing + model.motion.lean + model.motion.sway) {
-            stage.motion = model.motion
+        .onChange(of: model.motionKey) { stage.motion = model.fullMotion }
+        .confirmationDialog("Put \(putAway?.name ?? "this Spryt") away?", isPresented: Binding(get: { putAway != nil }, set: { if !$0 { putAway = nil } })) {
+            Button("Put Away") {
+                if let sheet = putAway { model.putAway(sheet) }
+                putAway = nil
+            }
+            Button("Cancel", role: .cancel) { putAway = nil }
+        } message: {
+            Text("Its file moves to Characters/off. Nothing is deleted, and you can move it back.")
         }
-        .onChange(of: action) { stage.action = action }
     }
 
-    // MARK: Preview, name and the buttons that finish the job
+    // MARK: The stage, the name, and the buttons that finish the job
 
-    private var left: some View {
-        VStack(spacing: 12) {
+    private var stagePane: some View {
+        VStack(spacing: 14) {
             TextField("Name", text: $model.name)
                 .textFieldStyle(.plain)
-                .font(.system(size: 24, weight: .heavy))
+                .font(.system(size: 26, weight: .bold))
                 .multilineTextAlignment(.center)
-                .padding(.top, 34)
-            MakerStageView(stage: stage)
-                .frame(height: 270)
-                .background(
-                    RadialGradient(colors: [Color.white.opacity(0.12), Color.clear], center: .center, startRadius: 10, endRadius: 190)
-                )
-            HStack(spacing: 6) {
-                pill("Walk", on: action == "walk") { action = "walk" }
-                pill("Stand", on: action == "stand") { action = "stand" }
-                pill("Wave", on: action == "wave") { action = "wave" }
-                pill("Surprise me", on: false) { model.surprise() }
-            }
-            Spacer(minLength: 0)
-            if !model.notice.isEmpty {
-                Text(model.notice)
-                    .font(.system(size: 11))
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 16)
-            }
-            Button(action: {
-                if model.save() {
-                    model.notice = "Saved. Restarting so \(model.cleanName) can walk on…"
-                    onRestart()
-                }
-            }) {
-                Text(model.id.isEmpty ? "Bring to life" : "Save changes")
-                    .font(.system(size: 14, weight: .heavy))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 10)
-                    .background(model.body)
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            }
-            .buttonStyle(.plain)
-            .padding(.horizontal, 18)
-            HStack(spacing: 8) {
-                pill("Share…", on: false) { model.export() }
-                pill("Open a .spryt…", on: false) { model.importCard() }
-                if !model.id.isEmpty {
-                    pill("New", on: false) { model.startNew() }
+                .padding(.top, 30)
+                .accessibilityLabel("Name")
+
+            GeometryReader { geometry in
+                ZStack {
+                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                        .fill(LinearGradient(colors: [model.body.opacity(0.20), model.body.opacity(0.05)],
+                                             startPoint: .top, endPoint: .bottom))
+                    // A soft shadow where the feet are, so jumps read as leaving the ground.
+                    Ellipse()
+                        .fill(Color.black.opacity(0.14))
+                        .frame(width: geometry.size.height * 0.32, height: geometry.size.height * 0.035)
+                        .blur(radius: 5)
+                        .position(x: geometry.size.width / 2,
+                                  y: geometry.size.height * (MakerStage.eye + MakerStage.span) / (2 * MakerStage.span))
+                    MakerStageView(stage: stage)
                 }
             }
-            .padding(.bottom, 16)
+            .padding(.horizontal, 22)
+
+            Picker("Preview", selection: $stage.loop) {
+                Text("Stand").tag("stand")
+                Text("Walk").tag("walk")
+                Text("Skip").tag("skip")
+                Text("Run").tag("run")
+                Text("Tiptoe").tag("sneak")
+            }
+            .pickerStyle(.segmented).labelsHidden()
+            .frame(maxWidth: 340)
+
+            Text(caption)
+                .font(.system(size: 12)).foregroundStyle(.secondary)
+                .multilineTextAlignment(.center).lineLimit(2)
+                .frame(height: 30).padding(.horizontal, 22)
+
+            HStack(spacing: 10) {
+                Button { model.surprise() } label: { Label("Surprise Me", systemImage: "dice") }
+                Menu {
+                    Button("Share…") { model.export() }
+                    Button("Open a .spryt…") { model.importCard() }
+                    Divider()
+                    Button("New Spryt") { model.startNew() }
+                    if !model.mine.isEmpty {
+                        Divider()
+                        ForEach(model.mine, id: \.id) { sheet in
+                            Menu(sheet.name) {
+                                Button("Edit") { model.edit(sheet) }
+                                Button("Put Away…") { putAway = sheet }
+                            }
+                        }
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
+                .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+                .help("Share, open, or edit one of your Spryts")
+                Spacer()
+                Button(model.id.isEmpty ? "Bring to Life" : "Save Changes") {
+                    if model.save() {
+                        model.notice = "Saved. Restarting so \(model.cleanName) can walk on…"
+                        onRestart()
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut("s", modifiers: .command)
+            }
+            .controlSize(.large)
+            .padding(.horizontal, 22).padding(.bottom, 20)
         }
+        .background(Surface.text)
+    }
+
+    /// One quiet line under the stage: what it is doing, or what just happened.
+    private var caption: String {
+        if let move = stage.playing, let info = Moves.info(move) { return info.name + " · " + info.hint }
+        if !model.notice.isEmpty { return model.notice }
+        return "A Spryt you make can chat, and that is all. It has no access to your files or your Mac."
     }
 
     // MARK: Everything you can change
 
-    private var form: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                if !model.mine.isEmpty { mine }
-                section("COLOURS") {
-                    HStack(spacing: 18) {
-                        swatch("Body", $model.body)
-                        swatch("Belly", $model.accent)
-                        swatch("Skin", $model.skin)
-                        swatch("Details", $model.trim)
-                    }
-                }
-                section("SHAPE") {
-                    choice("Head", ["round", "wide", "tall", "box"], $model.head)
-                    choice("Eyes", ["two", "one"], $model.eyes)
-                    choice("Face", ["none", "nose", "muzzle", "beak"], $model.snout)
-                    dial("Height", $model.height, 60...130)
-                    dial("Head size", $model.headScale, 0.8...1.6)
-                    dial("Eye size", $model.eyeSize, 0.6...1.6)
-                    dial("Legs", $model.legs, 0.6...1.5)
-                    dial("Arms", $model.arms, 0.6...1.5)
-                    dial("Body width", $model.torso, 0.7...1.5)
-                    dial("Limb thickness", $model.limbs, 0.6...1.6)
-                    dial("Feet", $model.feet, 0.6...1.6)
-                    Toggle("Belly patch", isOn: $model.belly).font(.system(size: 12))
-                }
-                section("EXTRAS") {
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 104), spacing: 6)], alignment: .leading, spacing: 6) {
-                        ForEach(MakerModel.extras, id: \.id) { extra in
-                            pill(extra.label, on: model.features.contains(extra.id)) {
-                                if model.features.contains(extra.id) {
-                                    model.features.remove(extra.id)
-                                } else {
-                                    model.features.insert(extra.id)
-                                }
-                            }
-                        }
-                    }
-                }
-                section("MOVEMENT") {
-                    dial("Speed", $model.motion.speed, 40...120)
-                    dial("Stride", $model.motion.stride, 0.2...0.9)
-                    dial("Bounce", $model.motion.bounce, 0...10)
-                    dial("Arm swing", $model.motion.armSwing, 0.2...1.2)
-                    dial("Lean", $model.motion.lean, -0.1...0.2)
-                    dial("Swagger", $model.motion.sway, 0...0.2)
-                    dial("Restlessness", $model.motion.fidget, 0...1)
-                    dial("Jumpiness", $model.motion.jumpiness, 0...1)
-                    dial("Tempo", $model.motion.tempo, 0.6...1.6)
-                    choice("Signature", ["none", "spark", "smoke"], $model.signature)
-                    Toggle("Does flips", isOn: $model.flips).font(.system(size: 12))
-                    Toggle("Takes naps", isOn: $model.naps).font(.system(size: 12))
-                }
-                section("PERSONALITY") {
-                    Text("How it talks, in your words. It can chat, and that is all: a Spryt you make or open has no access to your files or your Mac.")
-                        .font(.system(size: 11))
-                        .foregroundColor(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                    TextEditor(text: $model.persona)
-                        .font(.system(size: 13))
-                        .scrollContentBackground(.hidden)
-                        .frame(height: 84)
-                        .padding(8)
-                        .background(Color.white.opacity(0.06))
-                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                }
+    private var inspector: some View {
+        VStack(spacing: 0) {
+            Picker("Section", selection: $tab) {
+                ForEach(MakerTab.allCases) { Text($0.rawValue).tag($0) }
             }
-            .padding(18)
-            .padding(.top, 20)
+            .pickerStyle(.segmented).labelsHidden()
+            .padding(.horizontal, 20).padding(.top, 30).padding(.bottom, 4)
+
+            switch tab {
+            case .look: lookForm
+            case .movement: movementForm
+            case .moves: movesForm
+            case .voice: voiceForm
+            }
         }
     }
 
-    private var mine: some View {
-        section("YOUR SPRYTS") {
-            ForEach(model.mine, id: \.id) { sheet in
-                HStack(spacing: 8) {
-                    Circle().fill(Color(nsColor: NSColor(hex: sheet.look.body))).frame(width: 12, height: 12)
-                    Text(sheet.name).font(.system(size: 13, weight: .semibold))
-                    Spacer()
-                    pill("Edit", on: model.id == sheet.id) { model.edit(sheet) }
-                    pill("Put away", on: false) { model.putAway(sheet) }
+    private var lookForm: some View {
+        Form {
+            Section("Start from") {
+                FlowRow(spacing: 6) {
+                    ForEach(MakerPreset.all) { preset in
+                        Button {
+                            model.start(from: preset)
+                            stage.loop = "walk"
+                        } label: {
+                            HStack(spacing: 6) {
+                                Circle().fill(Color(nsColor: NSColor(hex: preset.card.look.body))).frame(width: 10, height: 10)
+                                Text(preset.id)
+                            }
+                        }
+                        .buttonStyle(.bordered).buttonBorderShape(.capsule).controlSize(.small)
+                    }
+                }
+            }
+            Section("Colours") {
+                ColorPicker("Body", selection: $model.body, supportsOpacity: false)
+                ColorPicker("Belly, hands and feet", selection: $model.accent, supportsOpacity: false)
+                ColorPicker("Face", selection: $model.skin, supportsOpacity: false)
+                ColorPicker("Details", selection: $model.trim, supportsOpacity: false)
+            }
+            Section("Shape") {
+                choice("Head", MakerModel.heads, $model.head)
+                choice("Body", MakerModel.builds, $model.build)
+                choice("Eyes", MakerModel.eyeKinds, $model.eyes)
+                choice("Face", MakerModel.snouts, $model.snout)
+                Toggle("Belly patch", isOn: $model.belly)
+            }
+            Section("Proportions") {
+                dial("Height", $model.height, 60...130)
+                dial("Head", $model.headScale, 0.8...1.6)
+                dial("Eyes", $model.eyeSize, 0.6...1.6)
+                dial("Body width", $model.torso, 0.7...1.5)
+                dial("Arms", $model.arms, 0.6...1.5)
+                dial("Legs", $model.legs, 0.6...1.5)
+                dial("Limb thickness", $model.limbs, 0.6...1.6)
+                dial("Feet", $model.feet, 0.6...1.6)
+            }
+            ForEach(MakerModel.extraGroups, id: \.title) { group in
+                Section(group.title) {
+                    FlowRow(spacing: 6) {
+                        ForEach(group.items, id: \.id) { extra in
+                            chip(extra.label, on: model.features.contains(extra.id)) { model.toggle(extra: extra.id) }
+                        }
+                    }
                 }
             }
         }
+        .formStyle(.grouped)
+    }
+
+    private var movementForm: some View {
+        Form {
+            Section {
+                FlowRow(spacing: 6) {
+                    ForEach(Moves.walks) { walk in
+                        chip(walk.name, on: model.walk == walk.id) {
+                            model.walk = walk.id
+                            stage.loop = "walk"
+                        }
+                    }
+                }
+            } header: {
+                Text("Its walk")
+            } footer: {
+                Text(Moves.walks.first { $0.id == model.walk }?.hint ?? "")
+            }
+            Section {
+                Picker("Gets around by", selection: $model.travel) {
+                    ForEach(Moves.travels) { Text($0.name).tag($0.id) }
+                }
+                .onChange(of: model.travel) {
+                    stage.loop = model.travel == "mix" ? "walk" : model.travel
+                }
+            } footer: {
+                Text(Moves.travels.first { $0.id == model.travel }?.hint ?? "")
+            }
+            Section("Feel") {
+                dial("Speed", $model.motion.speed, 40...120, low: "tortoise", high: "hare")
+                dial("Bounce", $model.motion.bounce, 0...10)
+                dial("Stride", $model.motion.stride, 0.2...0.9)
+                dial("Arm swing", $model.motion.armSwing, 0.2...1.2)
+                dial("Lean", $model.motion.lean, -0.1...0.2)
+                dial("Swagger", $model.motion.sway, 0...0.2)
+            }
+            Section {
+                dial("Restless", $model.motion.fidget, 0...1)
+                dial("Busy", $model.motion.tempo, 0.6...1.6)
+                Toggle("Takes naps", isOn: $model.naps)
+            } header: {
+                Text("Temperament")
+            } footer: {
+                Text("Restless Spryts fidget more. Busy ones spend less time standing about.")
+            }
+        }
+        .formStyle(.grouped)
+    }
+
+    private var movesForm: some View {
+        Form {
+            Section {
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
+                    ForEach(Moves.library) { move in moveTile(move) }
+                }
+                .padding(.vertical, 4)
+            } header: {
+                Text("What it does for fun")
+            } footer: {
+                Text("Tap a move to watch it and add it. Tap again to take it away. It does one of these in a spare moment, never the same one twice running.")
+            }
+            Section {
+                dial("Shows off", $model.showOff, 0...1)
+                dial("Jump height", $model.spring, 0.6...1.8)
+                dial("Leaps about", $model.motion.jumpiness, 0...1)
+                Picker("Leaves behind", selection: $model.signature) {
+                    Text("Nothing").tag("none")
+                    Text("Sparks").tag("spark")
+                    Text("Smoke").tag("smoke")
+                }
+            } footer: {
+                Text("Even an eager Spryt waits a few minutes between moves, and holds still while you are busy.")
+            }
+        }
+        .formStyle(.grouped)
+    }
+
+    private var voiceForm: some View {
+        Form {
+            Section {
+                FlowRow(spacing: 6) {
+                    ForEach(MakerModel.tones, id: \.name) { tone in
+                        chip(tone.name, on: model.persona == tone.text) { model.persona = tone.text }
+                    }
+                }
+                editor($model.persona, height: 92, label: "Personality")
+            } header: {
+                Text("Personality")
+            } footer: {
+                Text("How it talks, in your words. Pick a starting point, then make it yours.")
+            }
+            Section {
+                editor($model.hellos, height: 58, label: "Says hello with")
+                editor($model.replies, height: 58, label: "Answers with")
+            } header: {
+                Text("To other Spryts")
+            } footer: {
+                Text("First box: what it says to a neighbour. Second box: what it says back. One line each; {name} becomes the other Spryt’s name. Leave empty for the usual lines.")
+            }
+            Section("Body language") {
+                Picker("Greets with a", selection: $model.greeting) {
+                    Text("Wave").tag("wave")
+                    Text("Nod").tag("nod")
+                    Text("Bow").tag("bow")
+                    Text("Fist pump").tag("pump")
+                    Text("Shrug").tag("shrug")
+                }
+                .onChange(of: model.greeting) { stage.play(model.greeting) }
+                dial("Talks with its hands", $model.energy, 0.4...1.2)
+            }
+            Section {
+                dial("Pitch", $model.pitch, 0.7...1.5)
+                dial("Pace", $model.pace, 0.8...1.3)
+                Button {
+                    SpeechOut.shared.say("Hello! I'm \(model.cleanName).", as: model.sheet(id: "preview"))
+                } label: {
+                    Label("Listen", systemImage: "speaker.wave.2")
+                }
+            } header: {
+                Text("Speaking voice")
+            } footer: {
+                Text("Used when reading aloud is turned on for this Spryt.")
+            }
+        }
+        .formStyle(.grouped)
     }
 
     // MARK: Small parts
 
-    private func section<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 9) {
-            Text(title).font(.system(size: 10, weight: .heavy)).foregroundColor(.secondary)
-            content()
+    private func moveTile(_ move: MoveInfo) -> some View {
+        let on = model.moves.contains(move.id)
+        return Button {
+            if on {
+                model.moves.remove(move.id)
+            } else {
+                model.moves.insert(move.id)
+                stage.play(move.id)
+            }
+        } label: {
+            VStack(spacing: 6) {
+                Image(systemName: move.symbol).font(.system(size: 19)).frame(height: 24)
+                Text(move.name).font(.system(size: 11, weight: .medium)).lineLimit(1).minimumScaleFactor(0.8)
+            }
+            .foregroundStyle(on ? Color.accentColor : Color.primary)
+            .frame(maxWidth: .infinity).padding(.vertical, 10)
+            .background(on ? Color.accentColor.opacity(0.14) : Surface.text, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(on ? Color.accentColor.opacity(0.7) : Surface.separator.opacity(0.6), lineWidth: on ? 1.5 : 0.5))
+            .overlay(alignment: .topTrailing) {
+                if on {
+                    Image(systemName: "checkmark.circle.fill").font(.system(size: 12))
+                        .foregroundStyle(Color.accentColor).padding(5)
+                }
+            }
+            .contentShape(Rectangle())
         }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white.opacity(0.05))
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .buttonStyle(.plain)
+        .help(move.hint)
+        .accessibilityLabel(move.name)
+        .accessibilityValue(on ? "On" : "Off")
+        .contextMenu { Button("Watch") { stage.play(move.id) } }
     }
 
-    private func swatch(_ label: String, _ color: Binding<Color>) -> some View {
-        VStack(spacing: 4) {
-            ColorPicker(label, selection: color, supportsOpacity: false).labelsHidden()
-            Text(label).font(.system(size: 10)).foregroundColor(.secondary)
-        }
-    }
-
-    private func dial(_ label: String, _ value: Binding<CGFloat>, _ range: ClosedRange<CGFloat>) -> some View {
-        HStack(spacing: 10) {
-            Text(label).font(.system(size: 12)).frame(width: 104, alignment: .leading)
-            Slider(value: value, in: range)
+    @ViewBuilder
+    private func dial(_ label: String, _ value: Binding<CGFloat>, _ range: ClosedRange<CGFloat>,
+                      low: String? = nil, high: String? = nil) -> some View {
+        if let low, let high {
+            Slider(value: value, in: range) {
+                Text(label)
+            } minimumValueLabel: {
+                Image(systemName: low).foregroundStyle(.secondary)
+            } maximumValueLabel: {
+                Image(systemName: high).foregroundStyle(.secondary)
+            }
+        } else {
+            Slider(value: value, in: range) { Text(label) }
         }
     }
 
     private func choice(_ label: String, _ options: [String], _ selection: Binding<String>) -> some View {
-        HStack(spacing: 6) {
-            Text(label).font(.system(size: 12)).frame(width: 104, alignment: .leading)
-            ForEach(options, id: \.self) { option in
-                pill(option.capitalized, on: selection.wrappedValue == option) { selection.wrappedValue = option }
-            }
+        Picker(label, selection: selection) {
+            ForEach(options, id: \.self) { Text($0.capitalized).tag($0) }
         }
+        .pickerStyle(.segmented)
     }
 
-    private func pill(_ title: String, on: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(title)
-                .font(.system(size: 11, weight: .semibold))
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(on ? Color.white.opacity(0.3) : Color.white.opacity(0.08))
-                .clipShape(Capsule())
-        }
-        .buttonStyle(.plain)
+    private func chip(_ title: String, on: Bool, action: @escaping () -> Void) -> some View {
+        Button(title, action: action)
+            .capsuleButton(tint: .accentColor, prominent: on)
+            .accessibilityValue(on ? "On" : "Off")
+    }
+
+    private func editor(_ text: Binding<String>, height: CGFloat, label: String) -> some View {
+        TextEditor(text: text)
+            .font(.system(size: 13))
+            .scrollContentBackground(.hidden)
+            .padding(6)
+            .frame(height: height)
+            .background(Surface.text, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(Surface.separator, lineWidth: 0.5))
+            .accessibilityLabel(label)
     }
 }
 
@@ -674,15 +1048,13 @@ final class SprytMakerController: NSObject {
 
     func show() {
         if window == nil {
-            let made = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 880, height: 640),
+            let made = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 940, height: 680),
                                 styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                                 backing: .buffered, defer: false)
             made.isReleasedWhenClosed = false
             made.title = "Make a Spryt"
             made.titlebarAppearsTransparent = true
-            made.appearance = NSAppearance(named: .darkAqua)
-            made.backgroundColor = NSColor(srgbRed: 0.09, green: 0.10, blue: 0.16, alpha: 1)
-            made.contentMinSize = NSSize(width: 760, height: 520)
+            made.contentMinSize = NSSize(width: 820, height: 560)
             made.contentView = NSHostingView(rootView: SprytMakerView(onRestart: onRestart))
             made.center()
             window = made

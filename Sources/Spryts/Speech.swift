@@ -25,8 +25,10 @@ final class SpeechOut {
         let utterance = AVSpeechUtterance(string: spoken)
         utterance.voice = SpeechOut.voice
         // Smaller characters sound a little higher; brisk movers talk a little faster.
-        utterance.pitchMultiplier = Float(min(1.45, max(0.8, 1 + (110 - sheet.look.height) / 110)))
-        let pace = Float(min(1.25, max(0.85, sheet.motion.tempo)))
+        // A made Spryt can be given a voice of its own.
+        let voice = sheet.custom == true ? sheet.voice?.cleaned : nil
+        utterance.pitchMultiplier = Float(voice?.pitch ?? min(1.45, max(0.8, 1 + (110 - sheet.look.height) / 110)))
+        let pace = Float(voice?.pace ?? min(1.25, max(0.85, sheet.motion.tempo)))
         utterance.rate = AVSpeechUtteranceDefaultSpeechRate * (0.9 + 0.12 * pace)
         synth.speak(utterance)
     }

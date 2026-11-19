@@ -136,6 +136,24 @@ show Draft ready, Working, Response ready, Needs attention, or Interrupted. Thes
 Response ready does not certify that every proposed real-world action happened. Scenes are reusable requests, not yet a
 scheduled workflow engine with dependency tracking or structured artifact verification.
 
+## Make your own Spryt
+
+**✦ → Make a Spryt** opens the maker: a live stage on the left, four tabs on the right. Whatever you change, the
+Spryt on the stage does at once, with the same motion code the real stage uses.
+
+- **Look.** Start from a ready-made Spryt or from **Surprise Me**, then change colours, head, body, eyes, face,
+  proportions and extras (ears, tails, wings, capes and the rest).
+- **Movement.** Choose its walk (natural, strut, march, bounce, swing, waddle, glide, shuffle), how it likes to get
+  around (walking, skipping, running, tiptoeing), and tune speed, bounce, stride, lean and temperament.
+- **Moves.** Eighteen things it can do in a spare moment: jump, triple hop, flip, twirl, dizzy spin, dance, swing,
+  jumping jacks, high kicks, stomp, shimmy, wiggle, flex, stretch, bow, wave, victory lap, moonwalk. Tap one to
+  watch it and add it. Set how high it jumps and how often it shows off.
+- **Voice.** Its personality in your words, what it says to other Spryts, how it greets them, and the pitch and
+  pace of its speaking voice.
+
+**Bring to Life** puts it on the stage. **⋯ → Share…** writes a `.spryt` file anyone with Spryts can open. A made or
+opened Spryt can chat and nothing else: it has no tools and no access to files or the Mac, whatever its file says.
+
 ## X Feed (Sift, built in)
 
 Pip's workspace has an **X Feed** pane: X's own site, shown inside Spryts, with [Sift](https://benschippers.com) running
