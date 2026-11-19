@@ -26,6 +26,7 @@ struct Presence {
     var idle: CGFloat       // seconds since they last touched the mouse or keyboard
     var returned: Bool      // true for one frame when they come back from being away
     var night: Bool
+    var greeterID: String? = nil // only one character welcomes the person back
 }
 
 private func clamp(_ x: CGFloat, _ lo: CGFloat, _ hi: CGFloat) -> CGFloat {
@@ -46,6 +47,7 @@ final class SprytCharacter {
     let body: CharacterBody
     let node = SCNNode()
     let session: ChatSession
+    private let personality: SprytPersonality
     private let shadow: SCNNode
     private let emote = SCNNode()
     private let zIndex: CGFloat
@@ -107,6 +109,7 @@ final class SprytCharacter {
     private var phase: CGFloat = 0
     private var idleFor: CGFloat = 1.5
     private var walkTarget: CGFloat = 0
+    private var walkingMotion = WalkingMotion()
     private var gait: Gait = .walk
     private var errand: Errand = .none
     private weak var buddy: SprytCharacter?
@@ -207,6 +210,7 @@ final class SprytCharacter {
         self.lastX = start.x
         self.zIndex = zIndex
         self.session = ChatSession(sheet: sheet)
+        self.personality = SprytPersonality(role: sheet.role)
 
         var chosen: CharacterBody = ProceduralBody(look: sheet.look)
         if sheet.look.features.contains("cloud") { chosen = CloudBody(look: sheet.look) }
@@ -312,7 +316,12 @@ return CGRect(x: pos.x - H * 0.45, y: pos.y + altitude - 4, width: H * 0.9, heig
 
     /// True when the character has nothing better to do and can be greeted or tagged.
     var isFree: Bool {
-        (mode == .idle || mode == .sitting) && activity == .none && !attention && gestureTime <= 0
+        (mode == .idle || mode == .sitting) && activity == .none && !attention && !playing
+            && !petting && hobbyTime <= 0 && gestureTime <= 0 && replyIn <= 0
+    }
+
+    var canWelcomeBack: Bool {
+        (isFree || mode == .napping) && activity == .none && !playing && !attention
     }
 
     private var grounded: Bool {
@@ -327,6 +336,7 @@ return CGRect(x: pos.x - H * 0.45, y: pos.y + altitude - 4, width: H * 0.9, heig
         modeTime = 0
         if m == .walking || m == .crouching { sinceMoved = 0 }
         if m != .walking {
+            walkingMotion.reset()
             summoned = false
             backward = false
         }
@@ -359,6 +369,7 @@ return CGRect(x: pos.x - H * 0.45, y: pos.y + altitude - 4, width: H * 0.9, heig
     }
 
     private func setActivity(_ a: Activity) {
+        if a != .none { cancelSocialReply() }
         if activity != a {
             activity = a
             activityTime = 0
@@ -702,29 +713,32 @@ return CGRect(x: pos.x - H * 0.45, y: pos.y + altitude - 4, width: H * 0.9, heig
     private var replyLine = ""
     private var swoon: CGFloat = 0
 
-    private var role: String { sheet.role ?? "generalist" }
-
     private func opener(to other: SprytCharacter) -> String {
-        let n = other.sheet.name
-        var lines = ["Hey \(n)! Having a good day?", "\(n)! You look great over there.", "Psst, \(n). Glad you're here."]
-        if role == "coder" { lines += ["Hey \(n), all systems go?", "\(n)! Nice work today."] }
-        if role == "writer" { lines += ["\(n), you brighten the whole screen.", "So good to see you, \(n)."] }
-        if role == "coach" { lines += ["\(n)! Stretched today?", "Lap of the screen, \(n)? Easy pace.", "Hydrating, \(n)?"] }
-        if role == "forecaster" { lines += ["\(n), clear skies over here.", "Light showers on my side, \(n).", "Any rain where you are, \(n)?"] }
-        return lines.randomElement() ?? "Hey \(n)!"
+        personality.opener(to: other.sheet.name)
     }
 
-    private var answer: String {
-        if role == "coder" { return ["Affirmative!", "Ha. Compiling, as ever.", "All good. You're the best."].randomElement() ?? "Yes!" }
-        if role == "writer" { return ["Oh, delightfully so.", "You do say the nicest things.", "Ha! Likewise, friend."].randomElement() ?? "Yes!" }
-        if role == "coach" { return ["Feeling strong!", "Ha! Personal best day.", "Always. Good form, by the way."].randomElement() ?? "Yes!" }
-        if role == "forecaster" { return ["Ninety percent sure, yes.", "Clearing up, I'd say.", "Oh, absolutely. Bring a coat anyway."].randomElement() ?? "Yes!" }
-        return ["Ha! Always.", "You know it!", "Aw, thanks for checking in."].randomElement() ?? "Yes!"
+    private var answer: String { personality.answer }
+
+    private func cancelSocialReply() {
+        replyIn = 0
+        replyLine = ""
+        replyKind = ""
+        heartDelay = 0
+        heartTarget = nil
+    }
+
+    private func reserveSocialTime() {
+        SprytCharacter.nextSocialAllowed = Date().addingTimeInterval(Double.random(in: 150...300))
+        socialClock = 0
+        nextSocial = CGFloat.random(in: 60...150)
     }
 
     /// Every so often, when two characters are both at a loose end, one reaches out to the other.
     private func social(dt: CGFloat, others: [SprytCharacter], quiet: Bool) {
         if swoon > 0 { swoon -= dt }
+        if quiet || playing || attention || activity != .none || !(mode == .idle || mode == .sitting) {
+            cancelSocialReply()
+        }
 
         // A blown kiss leaves the hand a moment after the gesture starts.
         if heartDelay > 0 {
@@ -784,7 +798,7 @@ return CGRect(x: pos.x - H * 0.45, y: pos.y + altitude - 4, width: H * 0.9, heig
                 case "cheer":
                     play("pump")
                 default:
-                    play("wave")
+                    play(personality.greetingGesture)
                 }
                 idleFor = max(idleFor, 2.4)
             }
@@ -803,19 +817,17 @@ return CGRect(x: pos.x - H * 0.45, y: pos.y + altitude - 4, width: H * 0.9, heig
             socialClock = nextSocial - 8   // nobody free just now: look again shortly
             return
         }
-        socialClock = 0
-        nextSocial = CGFloat.random(in: 60...150)
-        SprytCharacter.nextSocialAllowed = Date().addingTimeInterval(Double.random(in: 150...300))
+        reserveSocialTime()
         facing = other.pos.x >= pos.x ? 1 : -1
         if mode == .sitting { setMode(.idle) }
         idleFor = max(idleFor, 4)
         let roll = CGFloat.random(in: 0...1)
         if roll < 0.35 {
-            play("wave")
+            play(personality.greetingGesture)
             other.reachedOut("wave", by: self, line: "", delay: 0.9)
         } else if roll < 0.65 {
             pendingSpeech = opener(to: other)
-            play("wave")
+            play(personality.greetingGesture)
             other.reachedOut("chat", by: self, line: other.answer, delay: 2.8)
         } else if roll < 0.82 {
             play("kiss")
@@ -846,7 +858,7 @@ return CGRect(x: pos.x - H * 0.45, y: pos.y + altitude - 4, width: H * 0.9, heig
         facing = x >= pos.x ? 1 : -1
         if mode == .sitting { setMode(.idle) }
         idleFor = 2.6
-        play("wave")
+        play(personality.greetingGesture)
     }
 
     func tagged(from x: CGFloat) {
@@ -860,6 +872,7 @@ return CGRect(x: pos.x - H * 0.45, y: pos.y + altitude - 4, width: H * 0.9, heig
     // MARK: Being picked up and thrown
 
     func beginDrag() {
+        cancelSocialReply()
         dangle = 0
         dangleVel = 0
         errand = .none
@@ -1051,15 +1064,15 @@ return CGRect(x: pos.x - H * 0.45, y: pos.y + altitude - 4, width: H * 0.9, heig
                 idleFor = 0.4
                 setMode(.idle)
             }
-            if mode == .idle && activity == .none {
-                showEmote("!")
+            if presence.greeterID == sheet.id && mode == .idle && activity == .none && !quiet && !playing {
                 facing = mouse.x >= pos.x ? 1 : -1
-                play("jump")
+                idleFor = max(idleFor, 3)
+                play(personality.greetingGesture)
             }
         }
 
         // A cursor whipping past makes them jump.
-        let center = CGPoint(x: pos.x, y: pos.y + H * 0.5)
+        let center = CGPoint(x: pos.x, y: pos.y + altitude + H * 0.5)
         if startleCooldown <= 0 && mouseSpeed > 2200 && !attention && !quiet && activity == .none
             && hypot(mouse.x - center.x, mouse.y - center.y) < H * 0.9
             && (mode == .idle || mode == .walking || mode == .sitting) {
@@ -1214,16 +1227,21 @@ return CGRect(x: pos.x - H * 0.45, y: pos.y + altitude - 4, width: H * 0.9, heig
                 setMode(.idle)
                 break
             }
-            // Wind up before a run, and ease into any walk instead of starting at full speed.
+            // Wind up before a run; accelerate and brake according to the distance left.
             if gait == .run && modeTime < 0.16 { break }
-            let ease = min(1, 0.35 + modeTime / 0.3)
-            let step = (backward ? -facing : facing) * speed * ease * dt
-            if abs(walkTarget - pos.x) <= abs(step) + 1 {
+            let distance = walkTarget - pos.x
+            let burst = gait == .run && (errand == .lap || errand == .flee)
+            let step = walkingMotion.advance(distance: distance, speed: speed,
+                acceleration: speed * 4.2, braking: speed * 3.5, dt: dt, brakeAtTarget: !burst)
+            // Tie the leg cycle to actual displacement, including the last short step.
+            let strideLength = max(8, 2 * body.legLength * sin(strideAngle) * reach)
+            phase += abs(step) / strideLength * CGFloat.pi
+            if abs(distance - step) < 0.01 {
                 pos.x = walkTarget
                 arrive()
                 break
             }
-            pos.x += step
+            pos.x = clamp(pos.x + step, lo, hi)
             if gait == .run {
                 let side: CGFloat = sin(phase) >= 0 ? 1 : -1
                 if side != stepSide {
@@ -1231,9 +1249,6 @@ return CGRect(x: pos.x - H * 0.45, y: pos.y + altitude - 4, width: H * 0.9, heig
                     emit(count: 1, sparkle: false, dx: -facing * H * 0.12)
                 }
             }
-            // Tie the leg cycle to distance covered so feet plant instead of sliding.
-            let strideLength = max(8, 2 * body.legLength * sin(strideAngle) * reach)
-            phase += abs(step) / strideLength * CGFloat.pi
 
         case .skidding:
             pos.x += facing * skidSpeed * dt
@@ -1509,13 +1524,18 @@ return CGRect(x: pos.x - H * 0.45, y: pos.y + altitude - 4, width: H * 0.9, heig
         }
         if blink > 0 { blink -= dt }
 
-        // Small gestures: always something going on, whenever the character is standing or sitting.
+        // Each role has its own small habits, with room for an intentional gesture to read clearly.
         let settled = mode == .idle || mode == .sitting
-        if settled && sulk <= 0 && activity != .error {
+        let crowd = max(1, CGFloat(others.filter { !$0.isOffstage }.count) / 2)
+        if settled && !quiet && !playing && !petting && sulk <= 0 && activity == .none
+            && gestureTime <= 0 && hobbyTime <= 0 && fidget == 0 && drill == 0 {
             if micro == 0 {
-                nextMicro -= dt
+                nextMicro -= dt / sqrt(crowd)
                 if nextMicro <= 0 {
-                    micro = pick(12, avoiding: &microHistory, keep: 5)
+                    let choices = personality.microGestures.filter { !microHistory.contains($0) }
+                    micro = choices.randomElement() ?? personality.microGestures.first ?? 1
+                    microHistory.append(micro)
+                    if microHistory.count > 5 { microHistory.removeFirst() }
                     microTime = 0
                     microDur = CGFloat.random(in: 0.5...1.3)
                     microAmp = CGFloat.random(in: 0.7...1.3)
@@ -1533,10 +1553,10 @@ return CGRect(x: pos.x - H * 0.45, y: pos.y + altitude - 4, width: H * 0.9, heig
         }
 
         // Medium gestures: about once a minute, only when there is nothing else to do.
-        if mode == .idle && activity == .none && gestureTime <= 0 && !attention && peekTime <= 0 {
+        if mode == .idle && activity == .none && gestureTime <= 0 && !attention && peekTime <= 0
+            && !quiet && !playing && !petting && hobbyTime <= 0 && sulk <= 0 && pokeTime <= 0 {
             if fidget == 0 {
                 // The more characters on stage, the less often each one fidgets, so the screen as a whole stays calm.
-                let crowd = max(1, CGFloat(others.filter { !$0.isOffstage }.count) / 2)
                 nextFidget -= dt / crowd
                 if nextFidget <= 0 {
                     if isCoach && CGFloat.random(in: 0...1) < 0.6 {
@@ -1672,6 +1692,7 @@ return CGRect(x: pos.x - H * 0.45, y: pos.y + altitude - 4, width: H * 0.9, heig
                 lapsLeft -= 1
                 walkTarget = lapHome
                 facing = walkTarget >= pos.x ? 1 : -1
+                walkingMotion.reset()
                 setMode(.walking)
                 return
             }
@@ -1685,8 +1706,8 @@ return CGRect(x: pos.x - H * 0.45, y: pos.y + altitude - 4, width: H * 0.9, heig
                 idleFor = 2.5
                 setMode(.idle)
                 play("tap")
-            } else if gait == .run {
-                skidSpeed = m.speed * 1.6
+            } else if gait == .run && errand == .flee {
+                skidSpeed = abs(walkingMotion.velocity) * 0.7
                 setMode(.skidding)
             } else {
                 idleFor = CGFloat.random(in: 6...14) / max(m.tempo, 0.5)
@@ -1807,8 +1828,9 @@ return CGRect(x: pos.x - H * 0.45, y: pos.y + altitude - 4, width: H * 0.9, heig
             $0 !== self && $0.surfaceID == platformID && $0.isFree
                 && abs($0.pos.x - pos.x) < 800 && abs($0.pos.x - pos.x) > H * 1.3
         })
-        let pSocial: CGFloat = neighbour != nil && roomy ? 0.10 : 0
+        let pSocial: CGFloat = neighbour != nil && roomy && Date() >= SprytCharacter.nextSocialAllowed ? 0.10 : 0
         if r >= 0 && r < pSocial, let other = neighbour {
+            reserveSocialTime()
             buddy = other
             if !isSpecialist && cheerful && !working && CGFloat.random(in: 0...1) < 0.3 {
                 errand = .tag
@@ -1999,7 +2021,7 @@ return CGRect(x: pos.x - H * 0.45, y: pos.y + altitude - 4, width: H * 0.9, heig
         let m = sheet.motion
         let H = body.height
         let L = body.legLength
-        let breathe = sin(t * 2.2)
+        let breathe = sin(t * personality.breathingRate)
 
         p.yaw = facing * 0.5
         p.squash = 1 + 0.012 * breathe
@@ -2092,6 +2114,13 @@ return CGRect(x: pos.x - H * 0.45, y: pos.y + altitude - 4, width: H * 0.9, heig
                 p.armR = -0.4 * s
                 p.headPitch = 0.1 * sin(phase * 2)
             }
+            // As the feet slow down, the upper body settles with them.
+            let cruisingSpeed = m.speed * (gait == .run ? 2.3 : (gait == .skip ? 1.35 : (gait == .sneak ? 0.55 : 1)))
+            let effort = clamp(abs(walkingMotion.velocity) / max(1, cruisingSpeed), 0, 1)
+            p.bodyY *= 0.3 + 0.7 * effort
+            p.lean *= 0.4 + 0.6 * effort
+            p.armL *= 0.6 + 0.4 * effort
+            p.armR *= 0.6 + 0.4 * effort
             if gait == .run && modeTime < 0.16 {
                 // Anticipation: rock back before taking off.
                 p.lean = -0.32
@@ -2493,14 +2522,15 @@ return CGRect(x: pos.x - H * 0.45, y: pos.y + altitude - 4, width: H * 0.9, heig
                 p.legL = 0.2 * max(0, sin(t * 7))
             case .talking:
                 p.yaw = 0
-                p.armR = 0.7 + 0.25 * sin(t * 5.5)
-                p.elbowR = 1.3 + 0.3 * sin(t * 4.1 + 1)
+                let energy = personality.talkingEnergy
+                p.armR = 0.7 + 0.25 * energy * sin(t * 5.5)
+                p.elbowR = 1.3 + 0.3 * energy * sin(t * 4.1 + 1)
                 p.armOutR = 0.35
-                p.armL = 0.4 + 0.15 * sin(t * 3.7)
+                p.armL = 0.4 + 0.15 * energy * sin(t * 3.7)
                 p.elbowL = 1.1
-                p.headPitch = 0.05 * sin(t * 6)
-                p.headTilt = 0.08 * sin(t * 2.3)
-                p.bodyY = 1.2 * sin(t * 5.5)
+                p.headPitch = 0.05 * energy * sin(t * 6)
+                p.headTilt = 0.08 * energy * sin(t * 2.3)
+                p.bodyY = 1.2 * energy * sin(t * 5.5)
             case .tool:
                 p.yaw = facing * 0.8
                 let waitingOnIt = (workKind == "run" || workKind == "build" || workKind == "test") && workTime > 1.4
@@ -2605,17 +2635,21 @@ return CGRect(x: pos.x - H * 0.45, y: pos.y + altitude - 4, width: H * 0.9, heig
         }
 
         // Turn to face whoever is hovering.
-        let headPoint = CGPoint(x: pos.x, y: pos.y + H * 0.8)
+        let headPoint = CGPoint(x: pos.x, y: pos.y + altitude + H * 0.8)
         let dx = mouse.x - headPoint.x
         let dy = mouse.y - headPoint.y
         if attention && mode == .idle && activity != .tool {
             p.yaw = clamp(dx / 600, -0.4, 0.4)
         }
 
-        // Eyes and head follow the cursor when it is close.
+        // A glance has a purpose: attend to the person, the work, or the direction of travel.
+        // Looking at a nearby cursor must not pull their eyes away from a page or a greeting.
         let near = hypot(dx, dy) < 520
         let calm = mode == .idle || mode == .walking || mode == .sitting || mode == .landing || mode == .crouching
-        if (attention || near) && calm && activity != .error {
+        let occupiedGaze = gestureTime > 0 || hobbyTime > 0 || fidget != 0 || micro != 0 || drill != 0 || activity != .none
+        let followsCursor = cursorOnScreen && calm && activity != .error && acting != .tool
+            && (attention || (near && mode != .walking && !occupiedGaze))
+        if followsCursor {
             let worldYaw = clamp(dx / 260, -1, 1)
             p.headYaw += clamp(worldYaw - p.yaw, -1.1, 1.1) * 0.9
             p.headPitch += clamp(-dy / 420, -0.45, 0.45)
@@ -2678,6 +2712,15 @@ return CGRect(x: pos.x - H * 0.45, y: pos.y + altitude - 4, width: H * 0.9, heig
                 p.elbowR = 0.5 + 0.3 * sin(t * 14 + 1)
             case "nod":
                 p.headPitch += 0.25 * sin(t * 12)
+            case "bow":
+                // Ember acknowledges the room with a small, unhurried bow.
+                let e = sin(CGFloat.pi * clamp(1 - gestureTime / 1.9, 0, 1))
+                p.lean += 0.24 * e
+                p.headPitch += 0.18 * e
+                p.armL = 0.55 * e
+                p.elbowL = 0.2 + 1.1 * e
+                p.armR = -0.35 * e
+                p.bodyY -= 2 * e
             case "shrug":
                 p.armOutL = 0.6
                 p.armOutR = 0.6
@@ -2998,11 +3041,22 @@ return CGRect(x: pos.x - H * 0.45, y: pos.y + altitude - 4, width: H * 0.9, heig
             p.flap = petting ? 0.3 : 0.04
         }
 
-        // Pupils follow the cursor; when it is far away they wander on their own.
-        if cursorOnScreen && hypot(dx, dy) < 1200 && mode != .napping {
+        // Eyes lead the head, and stay on the prop during a specialist's quiet hobby.
+        if followsCursor {
             p.lookX = clamp(dx / 260, -1, 1) * cos(p.yaw)
             p.lookY = clamp(dy / 260, -1, 1)
-        } else {
+        } else if mode == .idle && acting == .tool {
+            let searching = workKind == "search" || workKind == "web"
+            p.lookX = searching ? 0.35 * sin(t * 1.3) : 0.16 * sin(t * 2.4)
+            p.lookY = searching ? 0.15 : -0.45
+            if workKind == "write" && sin(t * 0.55) > 0.72 { p.lookY = 0.4 }
+        } else if mode == .idle && activity == .thinking {
+            p.lookX = 0.2 * facing
+            p.lookY = 0.25
+        } else if mode == .walking || mode == .napping {
+            p.lookX = 0
+            p.lookY = 0
+        } else if !occupiedGaze {
             p.lookX = dartX
             p.lookY = dartY
         }

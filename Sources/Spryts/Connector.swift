@@ -1,10 +1,18 @@
 import AppKit
 import SwiftUI
 
-/// One sign-in for every character: they all talk through Claude Code on this Mac,
-/// so connecting once in the browser connects all of them.
+/// One connection per engine, shared by the characters that choose it.
 final class Connector: ObservableObject {
-    static let shared = Connector()
+    private static var connections: [String: Connector] = [:]
+    static var shared: Connector { of(Engine.current) }
+    static func of(_ engine: String) -> Connector {
+        if let existing = connections[engine] { return existing }
+        let connector = Connector(engine: engine)
+        connections[engine] = connector
+        return connector
+    }
+    let engine: String
+    var name: String { engine == "codex" ? "OpenAI Codex" : (engine == "grok" ? "Grok" : "Claude Code") }
 
     enum State {
         case checking, missing, signedOut, connected
@@ -15,7 +23,8 @@ final class Connector: ObservableObject {
     @Published var problem = ""     // the last thing that went wrong
     private var process: Process?
 
-    private init() {
+    private init(engine: String) {
+        self.engine = engine
         refresh()
     }
 
@@ -60,7 +69,17 @@ final class Connector: ObservableObject {
 
     /// Looks again at whether the chosen agent is installed and signed in.
     func refresh() {
-        if Engine.current == "grok" {
+        guard working.isEmpty else { return }
+        if engine == "codex" {
+            state = .checking
+            DispatchQueue.global(qos: .userInitiated).async {
+                guard let binary = CodexAgent.binary else { self.finish(.missing); return }
+                let result = self.run(binary, ["login", "status"])
+                self.finish(result.code == 0 ? .connected : .signedOut)
+            }
+            return
+        }
+        if engine == "grok" {
             let found = Harness.findGrok()
             Harness.grokPath = found
             working = ""
@@ -85,7 +104,23 @@ final class Connector: ObservableObject {
         if !working.isEmpty { return }
         problem = ""
         working = "Getting ready…"
-        if Engine.current == "grok" {
+        if engine == "codex" {
+            guard let binary = CodexAgent.binary else {
+                working = ""
+                problem = "Install Codex, then choose Check again."
+                NSWorkspace.shared.open(URL(string: "https://developers.openai.com/codex/cli/")!)
+                return
+            }
+            working = "Finish signing in in your browser…"
+            DispatchQueue.global(qos: .userInitiated).async {
+                let login = self.run(binary, ["login"], keep: true)
+                let status = self.run(binary, ["login", "status"])
+                self.finish(status.code == 0 ? .connected : .signedOut,
+                    problem: status.code == 0 ? "" : (login.code == 0 ? "Check Codex sign-in and try again." : "Sign-in didn't finish."))
+            }
+            return
+        }
+        if engine == "grok" {
             connectGrok()
             return
         }
@@ -153,19 +188,23 @@ final class Connector: ObservableObject {
 
 /// The card a character shows in its popup while it isn't connected.
 struct ConnectCard: View {
-    @ObservedObject var connector = Connector.shared
+    @ObservedObject var connector: Connector
     let name: String
     let tint: Color
 
     var body: some View {
+        if connector.needsConnecting { card }
+    }
+
+    private var card: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 Image(systemName: "link.circle.fill").foregroundColor(tint)
-Text(connector.state == .missing ? "\(name) needs \(Engine.current == "grok" ? "Grok" : "Claude Code")" : "\(name) isn't signed in to \(Engine.name)")
+                Text(connector.state == .missing ? "\(name) needs \(connector.name)" : "\(name) isn't signed in to \(connector.name)")
                     .font(.system(size: 12, weight: .semibold))
             }
             Text(connector.working.isEmpty
-                 ? "Connect once in your browser and every character is ready. It uses your \(Engine.name) plan, not an API key."
+                 ? "Connect to \(connector.name) using its own sign-in. Characters using this engine share the connection."
                  : connector.working)
                 .font(.system(size: 11))
                 .foregroundColor(.secondary)
@@ -179,7 +218,7 @@ Text(connector.state == .missing ? "\(name) needs \(Engine.current == "grok" ? "
             HStack(spacing: 8) {
                 if connector.working.isEmpty {
                     Button(action: { connector.connect() }) {
-                        Text(connector.state == .missing ? "Install and connect" : "Connect in browser")
+                        Text(connector.state == .missing ? (connector.engine == "codex" ? "Get Codex" : "Install and connect") : "Connect in browser")
                             .font(.system(size: 12, weight: .semibold))
                             .padding(.horizontal, 12)
                             .padding(.vertical, 6)

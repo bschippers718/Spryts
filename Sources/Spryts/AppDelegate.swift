@@ -49,6 +49,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var last = CACurrentMediaTime()
     private var worldClock: CGFloat = 1
     private var quiet = false
+    private var restartRequested = false
 
     // Presence: is the person here, and for how long.
     private var idleSeconds: CGFloat = 0
@@ -145,7 +146,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             characters.append(character)
             panels[sheet.id] = ChatPanelController(session: character.session, sheet: sheet, shelf: shelf)
             let apps = shelf
-            character.session.contextProvider = { apps.context + FocusKeeper.contextNote() }
+            character.session.contextProvider = {
+                apps.context + FocusKeeper.contextNote()
+                    + ((sheet.role ?? "generalist") == "generalist" ? TeamCoordinator.shared.context(for: sheet.id) : "")
+            }
             if (sheet.role ?? "generalist") == "generalist" {
                 character.session.onTaskFinished = { ask, done in
                     apps.note(ask, mentioning: ask + " " + done)
@@ -168,6 +172,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             index += 1
         }
 
+        TeamCoordinator.shared.recoverInterrupted()
         buildMenu()
         buildEditMenu()
 
@@ -181,11 +186,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         timer = t
     }
 
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        for workspace in workspaces.values {
+            if let coding = workspace as? WorkspaceWindowController, !coding.confirmUnsavedChanges() {
+                restartRequested = false
+                return .terminateCancel
+            }
+        }
+        for character in characters where character.session.pipLibrary != nil {
+            if !confirmPipSaved(character.session) {
+                restartRequested = false
+                return .terminateCancel
+            }
+        }
+        return .terminateNow
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
         for character in characters {
             character.session.stop()
             character.session.save()
         }
+        if restartRequested { launchReplacement() }
     }
 
     /// Opens the big workspace window for a character and sends the character to sit on it.
@@ -206,7 +228,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             case "coach":
                 controller = TrainingRoomController(session: character.session, sheet: character.sheet)
             case "generalist":
-                controller = DeskController(session: character.session, sheet: character.sheet, shelf: shelf)
+                controller = DeskController(session: character.session, sheet: character.sheet, shelf: shelf, team: characters.map(\.session))
             default:
                 // A role without a place of its own has no big window. It never borrows someone else's.
                 return
@@ -237,7 +259,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// What a character does, in a word, for the menu.
     static func jobName(_ role: String?) -> String {
         switch role ?? "generalist" {
-        case "generalist": return "your Mac"
+        case "generalist": return "your day"
         case "coder": return "code"
         case "writer": return "writing"
         case "coach": return "training"
@@ -257,23 +279,65 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         openWorkspace(characters[sender.tag].sheet.id)
     }
 
-    /// Without a main menu, copy and paste shortcuts don't reach text fields. This one is never shown.
+    /// Responder-chain commands work in every native workspace, including the focused code editor.
     private func buildEditMenu() {
         let main = NSMenu()
+        let applicationItem = NSMenuItem()
+        let applicationMenu = NSMenu(title: "Spryts Studio")
+        applicationMenu.addItem(NSMenuItem(title: "About Spryts Studio", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: ""))
+        applicationMenu.addItem(.separator())
+        applicationMenu.addItem(NSMenuItem(title: "Hide Spryts Studio", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h"))
+        applicationMenu.addItem(NSMenuItem(title: "Show All", action: #selector(NSApplication.unhideAllApplications(_:)), keyEquivalent: ""))
+        applicationMenu.addItem(.separator())
+        applicationMenu.addItem(NSMenuItem(title: "Quit Spryts Studio", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+        applicationItem.submenu = applicationMenu
+        main.addItem(applicationItem)
+        let fileItem = NSMenuItem()
+        let file = NSMenu(title: "File")
+        file.addItem(NSMenuItem(title: "New Chat", action: #selector(PipSplitController.newPipChat(_:)), keyEquivalent: "n"))
+        let newProject = NSMenuItem(title: "New Project…", action: #selector(PipSplitController.newPipProject(_:)), keyEquivalent: "n")
+        newProject.keyEquivalentModifierMask = [.command, .shift]
+        file.addItem(newProject)
+        file.addItem(.separator())
+        file.addItem(NSMenuItem(title: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w"))
+        fileItem.submenu = file
+        main.addItem(fileItem)
+
         let editItem = NSMenuItem()
         let edit = NSMenu(title: "Edit")
         edit.addItem(NSMenuItem(title: "Undo", action: Selector(("undo:")), keyEquivalent: "z"))
+        let redo = NSMenuItem(title: "Redo", action: Selector(("redo:")), keyEquivalent: "z")
+        redo.keyEquivalentModifierMask = [.command, .shift]
+        edit.addItem(redo)
+        edit.addItem(.separator())
         edit.addItem(NSMenuItem(title: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x"))
         edit.addItem(NSMenuItem(title: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c"))
         edit.addItem(NSMenuItem(title: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v"))
         edit.addItem(NSMenuItem(title: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a"))
+        edit.addItem(.separator())
+        let find = NSMenuItem(title: "Find…", action: #selector(NSTextView.performFindPanelAction(_:)), keyEquivalent: "f")
+        find.tag = Int(NSFindPanelAction.showFindPanel.rawValue)
+        edit.addItem(find)
+        let next = NSMenuItem(title: "Find Next", action: #selector(NSTextView.performFindPanelAction(_:)), keyEquivalent: "g")
+        next.tag = Int(NSFindPanelAction.next.rawValue)
+        edit.addItem(next)
+        let previous = NSMenuItem(title: "Find Previous", action: #selector(NSTextView.performFindPanelAction(_:)), keyEquivalent: "g")
+        previous.tag = Int(NSFindPanelAction.previous.rawValue)
+        previous.keyEquivalentModifierMask = [.command, .shift]
+        edit.addItem(previous)
+        edit.addItem(.separator())
+        edit.addItem(NSMenuItem(title: "Search Chats and Projects", action: #selector(PipSplitController.searchPipChats(_:)), keyEquivalent: "k"))
+        edit.addItem(NSMenuItem(title: "Focus Pip’s Conversation", action: #selector(PipSplitController.focusPipChat(_:)), keyEquivalent: "l"))
         editItem.submenu = edit
         main.addItem(editItem)
+
         let windowItem = NSMenuItem()
         let windowMenu = NSMenu(title: "Window")
-        windowMenu.addItem(NSMenuItem(title: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w"))
+        windowMenu.addItem(NSMenuItem(title: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m"))
+        windowMenu.addItem(NSMenuItem(title: "Zoom", action: #selector(NSWindow.performZoom(_:)), keyEquivalent: ""))
         windowItem.submenu = windowMenu
         main.addItem(windowItem)
+        NSApp.windowsMenu = windowMenu
         NSApp.mainMenu = main
     }
 
@@ -353,12 +417,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Everything you set once and leave alone lives in here.
         let settingsEntry = NSMenuItem(title: "Settings", action: nil, keyEquivalent: "")
         let settings = NSMenu()
-        let claudeItem = NSMenuItem(title: "Run on Claude Code", action: #selector(chooseEngine(_:)), keyEquivalent: "")
+        let claudeItem = NSMenuItem(title: "New Spryts use Claude Code", action: #selector(chooseEngine(_:)), keyEquivalent: "")
         claudeItem.target = self
         claudeItem.tag = 0
         claudeItem.state = Engine.current == "grok" ? .off : .on
         settings.addItem(claudeItem)
-        let grokItem = NSMenuItem(title: "Run on Grok", action: #selector(chooseEngine(_:)), keyEquivalent: "")
+        let grokItem = NSMenuItem(title: "New Spryts use Grok", action: #selector(chooseEngine(_:)), keyEquivalent: "")
         grokItem.target = self
         grokItem.tag = 1
         grokItem.state = Engine.current == "grok" ? .on : .off
@@ -372,6 +436,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         speakItem.target = self
         speakItem.state = .on
         settings.addItem(speakItem)
+        if characters.contains(where: { ($0.sheet.role ?? "generalist") == "generalist" && $0.sheet.harness != nil }) {
+            let briefItem = NSMenuItem(title: "Morning brief and end-of-day wrap", action: #selector(toggleBriefings(_:)), keyEquivalent: "")
+            briefItem.target = self
+            briefItem.state = Briefings.enabled ? .on : .off
+            settings.addItem(briefItem)
+        }
         settings.addItem(NSMenuItem.separator())
         let resetItem = NSMenuItem(title: "Reset \"Always allow\" choices", action: #selector(resetAlwaysAllow), keyEquivalent: "")
         resetItem.target = self
@@ -399,6 +469,107 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         sender.state = speakFirst ? .on : .off
     }
 
+    @objc private func toggleBriefings(_ sender: NSMenuItem) {
+        Briefings.enabled.toggle()
+        sender.state = Briefings.enabled ? .on : .off
+    }
+
+    /// The chief of staff's morning brief or end-of-day wrap, once each a day, when the person is at the Mac.
+    private func briefIfDue() {
+        guard let chief = characters.first(where: { ($0.sheet.role ?? "generalist") == "generalist" && $0.sheet.harness != nil }),
+              !chief.session.busy, !chief.isOffstage, let due = Briefings.due() else { return }
+        Briefings.mark(due.key)
+        sinceRemark = 0
+        chief.session.onReply = { [weak chief] text in
+            guard let chief else { return }
+            let first = text.split(separator: "\n").first.map(String.init) ?? ""
+            chief.pendingSpeech = first.count > 140 ? String(first.prefix(140)) + "…" : first
+        }
+        chief.session.ask(display: due.display, prompt: due.prompt)
+    }
+
+    /// Deliver work once, retain its status, and return a receipt without starting another agent turn.
+    private func deliverHandoffs() {
+        let team = TeamCoordinator.shared
+        team.refresh()
+        func character(_ query: String) -> SprytCharacter? {
+            characters.first { $0.sheet.id.lowercased() == query.lowercased()
+                || ($0.sheet.role ?? "generalist") == query.lowercased()
+                || $0.sheet.name.lowercased() == query.lowercased() }
+        }
+        func canWork(_ spryt: SprytCharacter) -> Bool {
+            spryt.sheet.harness != nil && Handoffs.allowedRoles.contains(spryt.sheet.role ?? "generalist")
+        }
+
+        // Report both successful and unsuccessful turns. A report never grants permission or sends
+        // another prompt, and it waits for the source's current work rather than interrupting it.
+        for job in team.jobs where job.status.isTerminal && job.receiptDeliveredAt == nil {
+            guard let source = character(job.from), canWork(source), !source.session.busy else { continue }
+            let report = (job.toName ?? job.to) + " · " + job.status.label + "\n"
+                + String(job.task.prefix(240)) + "\n\n" + (job.result ?? job.detail ?? "No written report.")
+            if !source.session.messages.contains(where: { $0.role == "assistant" && $0.text == report }) {
+                source.session.messages.append(ChatMessage(role: "assistant", text: report))
+                source.session.save()
+            }
+            team.markReceiptDelivered(job.id)
+        }
+
+        for job in team.jobs.sorted(by: { $0.createdAt < $1.createdAt }) {
+            if job.status == .running || job.status == .waitingApproval {
+                if let target = character(job.to), target.session.activeTeamJobID == job.id {
+                    team.update(job.id, status: target.session.approval == nil ? .running : .waitingApproval,
+                                detail: target.session.approval == nil ? nil : "Waiting for your approval in " + target.sheet.name + ".")
+                }
+                continue
+            }
+            guard job.status == .queued || job.status == .needsAttention else { continue }
+            guard let source = character(job.from), canWork(source) else {
+                team.update(job.id, status: .failed, detail: "The sending specialist is unavailable. No work was started.")
+                continue
+            }
+            guard let target = character(job.to), canWork(target) else {
+                team.update(job.id, status: .failed, detail: "The requested specialist is unavailable. No work was started.")
+                continue
+            }
+            guard source.sheet.id != target.sheet.id else {
+                team.update(job.id, status: .failed, detail: "A specialist cannot hand a task to itself. No work was started.")
+                continue
+            }
+            if target.session.busy { continue }
+            guard target.session.harnessBinary() != nil else {
+                team.update(job.id, status: .needsAttention, detail: "Connect an agent engine for " + target.sheet.name + " to start this task.")
+                continue
+            }
+            if target.sheet.role == "coder" {
+                guard let folder = target.session.projectFolder else {
+                    team.update(job.id, status: .needsAttention, detail: "Choose a project in " + target.sheet.name + "'s workspace to start this task.")
+                    continue
+                }
+                if let expected = job.projectFolder,
+                   URL(fileURLWithPath: expected).standardizedFileURL != folder.standardizedFileURL {
+                    team.update(job.id, status: .needsAttention, detail: "This task belongs to " + expected + ". Choose that project in " + target.sheet.name + "'s workspace.")
+                    continue
+                }
+            }
+            team.resolve(job.id, fromName: source.sheet.name, toName: target.sheet.name,
+                         projectFolder: job.projectFolder ?? target.session.projectFolder?.path)
+            guard team.update(job.id, status: .running) else { continue }
+            target.session.activeTeamJobID = job.id
+            target.wake()
+            if target.isOffstage { target.returnToStage(world: world, others: characters) }
+            target.pendingSpeech = "Got a task from \(source.sheet.name). On it."
+            let context = "\n\n(This task was handed over by \(source.sheet.name) on the person's behalf. "
+                + "Keep the same scope and approval requirements. Work only in your assigned project; "
+                + "if the intended project or outcome is unclear, report the blocker before changing anything. "
+                + "Do not hand this task to another character. End with an honest report of what changed, "
+                + "what you verified, and any unresolved blocker; the app returns that report to the sender.)"
+            target.session.ask(display: "From \(source.sheet.name): " + job.task, prompt: job.task + context) { [weak target] outcome in
+                target?.session.activeTeamJobID = nil
+                team.finish(job.id, outcome: outcome)
+            }
+        }
+    }
+
     @objc private func toggleQuiet(_ sender: NSMenuItem) {
         quiet.toggle()
         sender.state = quiet ? .on : .off
@@ -406,17 +577,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: Games
 
-    /// Switches every character between Claude Code and Grok. Conversations don't carry across, so each starts fresh.
+    /// A default for new characters. Existing characters keep their own engine.
     @objc private func chooseEngine(_ sender: NSMenuItem) {
         let wanted = sender.tag == 1 ? "grok" : "claude"
         if wanted == Engine.current { return }
         Engine.current = wanted
         for (index, item) in engineItems.enumerated() { item.state = index == sender.tag ? .on : .off }
-        for character in characters where !character.session.busy {
-            character.session.harnessSession = nil
-            character.session.objectWillChange.send()
-            character.session.save()
-        }
         Connector.shared.refresh()
     }
 
@@ -478,7 +644,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Starts a fresh copy of the app and closes this one, so a new or changed Spryt walks on.
     private func restart() {
-        for character in characters { character.session.save() }
+        restartRequested = true
+        NSApp.terminate(nil)
+    }
+
+    private func launchReplacement() {
         guard let path = Bundle.main.executablePath else { return }
         // A short pause lets this copy finish closing before the new one puts its characters on screen.
         let launcher = Process()
@@ -488,7 +658,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         launcher.currentDirectoryURL = Config.home
         do {
             try launcher.run()
-            NSApp.terminate(nil)
         } catch {
             Harness.log("restart failed: " + String(error.localizedDescription.prefix(120)))
         }
@@ -558,6 +727,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
 
+            deliverHandoffs()
+
             // Look at the real sky again every ten minutes; the service itself only fetches every half hour.
             weatherClock += 0.25
             if weatherClock > 600 {
@@ -582,14 +753,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         if idleSeconds < 60 { activeStreak += dt }
 
+        // One nearby character acknowledges a return; the others simply wake up.
+        let returnGreeter = returned && !quiet ? characters.filter { $0.canWelcomeBack }.min(by: {
+            hypot($0.hitRect.midX - mouse.x, $0.hitRect.midY - mouse.y)
+                < hypot($1.hitRect.midX - mouse.x, $1.hitRect.midY - mouse.y)
+        }) : nil
+
         // Speaking first: a hello, a welcome back, a nudge after a long stretch. Never more often than the gaps below.
         if speakFirst && !quiet {
             if !saidHello && uptime > 3 {
                 saidHello = true
                 nudge(.hello, from: characters.first)
             } else if returned && returnedAfter > 180 && sinceRemark > 180 {
-                let nearest = characters.min(by: { abs($0.pos.x - mouse.x) < abs($1.pos.x - mouse.x) })
-                nudge(.back(minutes: Int(returnedAfter / 60)), from: nearest)
+                nudge(.back(minutes: Int(returnedAfter / 60)), from: returnGreeter)
+            } else if uptime > 30 && idleSeconds < 20 && sinceRemark > 90 && Briefings.due() != nil {
+                briefIfDue()
             } else if activeStreak > 50 * 60 && sinceRemark > 480 {
                 let minutes = Int(activeStreak / 60)
                 activeStreak = 0
@@ -597,7 +775,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
-        let presence = Presence(idle: idleSeconds, returned: returned, night: night)
+        let presence = Presence(idle: idleSeconds, returned: returned, night: night, greeterID: returnGreeter?.sheet.id)
         var overAny = false
         for character in characters {
             let id = character.sheet.id

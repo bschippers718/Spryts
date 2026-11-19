@@ -65,6 +65,13 @@ enum Config {
         if let h = ProcessInfo.processInfo.environment["SPRYTS_HOME"], !h.isEmpty {
             return URL(fileURLWithPath: h)
         }
+        // Launched as an app (from Finder, the Dock or at login): the build script leaves the folder's path here.
+        let note = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support/Spryts/home")
+        if let h = try? String(contentsOf: note, encoding: .utf8), !h.isEmpty,
+           FileManager.default.fileExists(atPath: h) {
+            return URL(fileURLWithPath: h)
+        }
         return URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
     }()
 

@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleDisplayName</key>
+	<string>Spryts Studio</string>
+	<key>CFBundleName</key>
+	<string>Spryts Studio</string>
+	<key>CFBundleExecutable</key>
+	<string>Spryts</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.schippers.spryts-studio</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.2</string>
+	<key>CFBundleVersion</key>
+	<string>2</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>26.0</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.productivity</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSPrincipalClass</key>
+	<string>NSApplication</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>Spryts account sign-in</string>
+			<key>CFBundleURLSchemes</key>
+			<array><string>spryts-auth</string></array>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+		</dict>
+	</array>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>Pip reads today's events, from every calendar you've added to Calendar, to keep your day on track. Nothing is changed unless you ask.</string>
+	<key>NSCalendarsUsageDescription</key>
+	<string>Pip reads today's events to keep your day on track.</string>
+	<key>NSRemindersFullAccessUsageDescription</key>
+	<string>Pip reads reminders that are due so nothing slips. Nothing is changed unless you ask.</string>
+	<key>NSRemindersUsageDescription</key>
+	<string>Pip reads reminders that are due so nothing slips.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Your Spryts listen only while you hold the talk key, so you can speak instead of type.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>What you say while holding the talk key is turned into text on this Mac.</string>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>Pip uses Mail, Calendar, Reminders and other apps on your behalf when you ask.</string>
+	<key>NSDesktopFolderUsageDescription</key>
+	<string>Spryts Studio keeps its characters in a folder on your Desktop.</string>
+</dict>
+</plist>

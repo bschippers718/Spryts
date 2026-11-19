@@ -14,6 +14,10 @@ enum ChatEvent {
 }
 
 /// Reasons a character might speak without being asked.
+enum ChatTaskOutcome {
+    case completed(String), failed(String), interrupted
+}
+
 enum Nudge {
     case hello
     case back(minutes: Int)
@@ -31,6 +35,7 @@ struct ChatMessage: Identifiable, Equatable {
 private enum Piece {
     case text(String)
     case tool(String)
+    case failure(String)
 }
 
 private struct ChatFailure: LocalizedError {
@@ -53,6 +58,7 @@ private struct MemoryStore: Codable {
     var lastSeen: Date
     var harnessSession: String?
     var folder: String?
+    var engine: String?
 }
 
 final class ChatSession: ObservableObject {
@@ -60,6 +66,10 @@ final class ChatSession: ObservableObject {
     @Published var draft = ""
     @Published var busy = false
     @Published var pinned = false
+    @Published private(set) var pipLibrary: PipLibrary?
+    private var pipAutosave: AnyCancellable?
+    private var legacyMemoryError: String?
+    private var pipPendingSceneOutcome: PipSceneRunStatus?
 
     let sheet: CharacterSheet
     var onEvent: ((ChatEvent) -> Void)?
@@ -69,6 +79,9 @@ final class ChatSession: ObservableObject {
     private var firstMet = Date()
     private var lastSeen: Date?
     private var task: Task<Void, Never>?
+    private var taskCompletion: ((ChatTaskOutcome) -> Void)?
+    var cancelHarness: (() -> Void)?
+    var approvalReplies: [String: (Bool) -> Void] = [:]
 
     // Agent harness state
     @Published var steps: [AgentStep] = []
@@ -80,6 +93,9 @@ final class ChatSession: ObservableObject {
     @Published var touchedFile: URL?
     @Published var lastTest = ""
     @Published var editCount = 0
+    @Published var checkpoints: [Checkpoint] = []   // the programmer's: newest first
+    @Published var plan: [PlanItem] = []
+    var onReply: ((String) -> Void)?   // called once with the next finished reply, then cleared
     var onOpenWorkspace: (() -> Void)?
     var onPlay: (() -> Void)?
     var onTaskFinished: ((String, String) -> Void)?   // what was asked, and what was done
@@ -87,40 +103,92 @@ final class ChatSession: ObservableObject {
     var taskGrants: Set<String> = []
     var harnessSession: String?
     var process: Process?
+    var activeTeamJobID: String?
     var stopped = false
     var contextProvider: (() -> String)?
 
-    /// The model this character talks to. Starts from the sheet; a choice made in the app is remembered per character.
+    /// Engine and model choices belong to this character, never to the whole stage.
+    @Published private(set) var engine: String
     @Published var model: String {
-        didSet { UserDefaults.standard.set(model, forKey: "model." + sheet.id) }
+        didSet { UserDefaults.standard.set(model, forKey: "model." + sheet.id + "." + engine) }
     }
+    @Published var discoveredModels: [(id: String, label: String)] = []
+    @Published var modelProblem = ""
+    @Published var loadingModels = false
 
     init(sheet: CharacterSheet) {
         self.sheet = sheet
-        self.model = UserDefaults.standard.string(forKey: "model." + sheet.id) ?? sheet.model
+        let saved = UserDefaults.standard.string(forKey: "engine." + sheet.id)
+        let choice = saved ?? (sheet.harness == "grok" ? "grok" : Engine.current)
+        let valid = ["claude", "grok"].contains(choice) || (choice == "codex" && sheet.role == "coder")
+        let selectedEngine = sheet.harness == nil ? sheet.provider : (valid ? choice : "claude")
+        self.engine = selectedEngine
+        let legacy = UserDefaults.standard.string(forKey: "model." + sheet.id) ?? sheet.model
+        let compatible = sheet.harness == nil || (selectedEngine == "grok" && legacy.hasPrefix("grok"))
+            || (selectedEngine == "claude" && (legacy.hasPrefix("claude") || ["opus", "sonnet", "haiku"].contains(legacy)))
+        self.model = UserDefaults.standard.string(forKey: "model." + sheet.id + "." + selectedEngine)
+            ?? (compatible ? legacy : "")
         load()
+        if (sheet.role ?? "generalist") == "generalist" { setUpPipLibrary() }
+        if sheet.harness != nil { UserDefaults.standard.set(engine, forKey: "engine." + sheet.id) }
     }
 
     static let claudeModels: [(id: String, label: String)] = [
-        ("claude-opus-5-5", "Opus 5.5"),
-        ("claude-sonnet-5-5", "Sonnet 5.5"),
-        ("claude-haiku-5-5", "Haiku 5.5"),
-        ("claude-fable-5-2", "Fable 5.2"),
+        ("", "Agent default"), ("opus", "Opus"), ("sonnet", "Sonnet"), ("haiku", "Haiku")
     ]
 
-    /// Models offered in the picker. Grok characters keep whatever their sheet names.
-    var modelChoices: [(id: String, label: String)] {
-        if sheet.harness != nil && engine == "grok" { return ChatSession.grokModels }
-        if sheet.provider == "grok" { return [(sheet.model, sheet.model)] }
-        var choices = ChatSession.claudeModels
-        if !model.hasPrefix("grok") && !choices.contains(where: { $0.id == model }) { choices.append((model, model)) }
+    var engineChoices: [(id: String, label: String)] {
+        guard sheet.harness != nil else { return [(sheet.provider, sheet.provider.capitalized)] }
+        var choices = [(id: "claude", label: "Claude Code"), (id: "grok", label: "Grok")]
+        if sheet.role == "coder" { choices.append(("codex", "OpenAI Codex")) }
         return choices
     }
 
-    var modelLabel: String {
-        if sheet.harness != nil && engine == "grok" && !model.hasPrefix("grok-") { return "Grok default" }
-        if sheet.harness != nil && engine != "grok" && model.hasPrefix("grok") { return "Default" }
-        return modelChoices.first(where: { $0.id == model })?.label ?? model
+    var engineLabel: String { engineChoices.first(where: { $0.id == engine })?.label ?? engine }
+
+    var modelChoices: [(id: String, label: String)] {
+        guard sheet.harness != nil else {
+            return model == sheet.model ? [(model, model)] : [(sheet.model, sheet.model), (model, model)]
+        }
+        var choices = engine == "codex" ? [(id: "", label: "Agent default")] + discoveredModels
+            : (engine == "grok" ? [(id: "", label: "Agent default")] : Self.claudeModels)
+        if !choices.contains(where: { $0.id == model }) { choices.append((model, model)) }
+        return choices
+    }
+
+    var modelLabel: String { modelChoices.first(where: { $0.id == model })?.label ?? model }
+
+    func selectEngine(_ wanted: String) {
+        guard !busy, wanted != engine, engineChoices.contains(where: { $0.id == wanted }) else { return }
+        if pipLibrary != nil && !save() { return }
+        let previous = pipSnapshot()
+        UserDefaults.standard.set(model, forKey: "model." + sheet.id + "." + engine)
+        engine = wanted
+        UserDefaults.standard.set(wanted, forKey: "engine." + sheet.id)
+        model = UserDefaults.standard.string(forKey: "model." + sheet.id + "." + wanted) ?? ""
+        harnessSession = nil
+        discoveredModels = []
+        modelProblem = ""
+        steps = []
+        if !save(), pipLibrary != nil { applyPipSnapshot(previous); return }
+        Connector.of(engine).refresh()
+        refreshModels()
+    }
+
+    func refreshModels() {
+        guard engine == "codex", !loadingModels else { return }
+        loadingModels = true
+        modelProblem = ""
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { self.loadingModels = false }
+            do {
+                let models = try await CodexAgent.models()
+                if self.engine == "codex" { self.discoveredModels = models }
+            } catch {
+                if self.engine == "codex" { self.modelProblem = error.localizedDescription }
+            }
+        }
     }
 
     // MARK: Memory on disk (kept on this Mac, outside any synced folder)
@@ -136,37 +204,77 @@ final class ChatSession: ObservableObject {
     }
 
     private func load() {
-        guard let data = try? Data(contentsOf: file) else { return }
+        guard FileManager.default.fileExists(atPath: file.path) else { return }
+        guard let data = try? Data(contentsOf: file) else {
+            legacyMemoryError = "Couldn't open your earlier conversation. Its original file is untouched."
+            return
+        }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        guard let store = try? decoder.decode(MemoryStore.self, from: data) else { return }
+        guard let store = try? decoder.decode(MemoryStore.self, from: data) else {
+            legacyMemoryError = "Couldn't read your earlier conversation. Its original file is untouched."
+            return
+        }
         messages = store.messages.map { ChatMessage(role: $0.role, text: $0.text, hidden: $0.hidden) }
         facts = store.facts
         affection = store.affection
         firstMet = store.firstMet
         lastSeen = store.lastSeen
-        harnessSession = store.harnessSession
+        if (sheet.role ?? "generalist") == "generalist", let savedEngine = store.engine,
+           engineChoices.contains(where: { $0.id == savedEngine }), savedEngine != engine {
+            engine = savedEngine
+            model = UserDefaults.standard.string(forKey: "model." + sheet.id + "." + engine) ?? ""
+        }
+        harnessSession = (store.engine ?? (sheet.harness == "grok" ? "grok" : engine)) == engine ? store.harnessSession : nil
         if let folder = store.folder, FileManager.default.fileExists(atPath: folder) {
             projectFolder = URL(fileURLWithPath: folder)
         }
+        if let data = UserDefaults.standard.data(forKey: "checkpoints." + sheet.id),
+           let saved = try? JSONDecoder().decode([Checkpoint].self, from: data) {
+            checkpoints = saved
+        }
     }
 
-    func save() {
+    private func keep(_ point: Checkpoint) {
+        checkpoints.insert(point, at: 0)
+        if checkpoints.count > 12 { checkpoints.removeLast(checkpoints.count - 12) }
+        if let data = try? JSONEncoder().encode(checkpoints) {
+            UserDefaults.standard.set(data, forKey: "checkpoints." + sheet.id)
+        }
+    }
+
+    @discardableResult
+    func save(sceneOutcome: PipSceneRunStatus? = nil) -> Bool {
+        if let library = pipLibrary {
+            if let sceneOutcome { pipPendingSceneOutcome = sceneOutcome }
+            let saved = library.saveCurrent(snapshot: pipSnapshot(), relationship: pipRelationship, sceneOutcome: pipPendingSceneOutcome)
+            if saved { pipPendingSceneOutcome = nil }
+            return saved
+        }
         let kept = messages.filter { !$0.text.isEmpty }.suffix(60)
         let store = MemoryStore(
             messages: kept.map { StoredMessage(role: $0.role, text: $0.text, hidden: $0.hidden) },
             facts: facts, affection: affection, firstMet: firstMet, lastSeen: Date(),
-            harnessSession: harnessSession, folder: projectFolder?.path)
+            harnessSession: harnessSession, folder: projectFolder?.path, engine: engine)
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = [.prettyPrinted]
-        guard let data = try? encoder.encode(store) else { return }
-        try? FileManager.default.createDirectory(at: ChatSession.folder, withIntermediateDirectories: true)
-        try? data.write(to: file, options: .atomic)
+        do {
+            let data = try encoder.encode(store)
+            try FileManager.default.createDirectory(at: ChatSession.folder, withIntermediateDirectories: true)
+            try data.write(to: file, options: .atomic)
+            return true
+        } catch { return false }
     }
 
     func forget() {
         if busy { return }
+        if let library = pipLibrary {
+            guard library.forget(engine: engine, model: model) else { return }
+            restoreActivePipConversation()
+            try? FileManager.default.removeItem(at: file)
+            return
+        }
         messages = []
         facts = []
         affection = 0
@@ -175,6 +283,188 @@ final class ChatSession: ObservableObject {
         harnessSession = nil
         steps = []
         try? FileManager.default.removeItem(at: file)
+    }
+
+    // MARK: Pip's projects and conversations
+
+    private var pipRelationship: PipRelationship {
+        PipRelationship(affection: affection, firstMet: firstMet, lastSeen: Date())
+    }
+
+    private func pipSnapshot() -> PipChatSnapshot {
+        PipChatSnapshot(messages: messages.map { PipMessage(role: $0.role, text: $0.text, hidden: $0.hidden, payload: $0.payload) },
+            draft: draft, attachments: attachments.map(\.path), engine: engine, model: model,
+            sessionID: harnessSession, folder: projectFolder?.path, facts: facts, wasRunning: busy && task != nil)
+    }
+
+    private func setUpPipLibrary() {
+        // Character ids are namespaced into a file component; imported companions never reach here.
+        let safeID = sheet.id.utf8.map { String(format: "%02x", $0) }.joined()
+        let library = PipLibrary(file: Self.folder.appendingPathComponent("Libraries")
+            .appendingPathComponent(safeID).appendingPathComponent("library.json"))
+        pipLibrary = library
+        if let legacyMemoryError { library.preventBootstrap(legacyMemoryError) }
+        let previousRelationship = PipRelationship(affection: affection, firstMet: firstMet, lastSeen: lastSeen)
+        if library.bootstrap(snapshot: pipSnapshot(), relationship: previousRelationship) {
+            _ = library.recoverInterruptedConversation()
+            restoreActivePipConversation()
+        }
+        pipAutosave = Publishers.CombineLatest3($draft, $attachments, $model)
+            .dropFirst().debounce(for: .milliseconds(400), scheduler: RunLoop.main)
+            .sink { [weak self] _ in self?.save() }
+    }
+
+    private func applyPipSnapshot(_ snapshot: PipChatSnapshot) {
+        let compatible = engineChoices.contains { $0.id == snapshot.engine }
+        if compatible { engine = snapshot.engine; model = snapshot.model }
+        harnessSession = compatible && !snapshot.wasRunning ? snapshot.sessionID : nil
+        messages = snapshot.messages.map { ChatMessage(role: $0.role, text: $0.text, hidden: $0.hidden, payload: $0.payload) }
+        if snapshot.wasRunning {
+            // Keep the interruption visible even when its initial recovery write failed.
+            messages.append(ChatMessage(role: "assistant", text: "This conversation was interrupted when Spryts closed. No work was restarted."))
+        }
+        draft = snapshot.draft
+        attachments = snapshot.attachments.map { URL(fileURLWithPath: $0) }
+        projectFolder = snapshot.folder.map { URL(fileURLWithPath: $0) }
+        facts = snapshot.facts
+        steps = []; plan = []; lastTest = ""; touchedFile = nil; editCount = 0
+        taskGrants = []; discoveredModels = []; modelProblem = ""
+        UserDefaults.standard.set(engine, forKey: "engine." + sheet.id)
+    }
+
+    private func restoreActivePipConversation() {
+        guard !busy, let library = pipLibrary, let conversation = library.activeConversation else { return }
+        applyPipSnapshot(conversation.snapshot)
+        if let relationship = library.relationship {
+            affection = relationship.affection; firstMet = relationship.firstMet; lastSeen = relationship.lastSeen
+        }
+    }
+
+    /// Saves the submitted request before starting any provider. A failed write leaves the
+    /// visible conversation and composer intact, with the storage problem available to the UI.
+    private func persistPipTurn(_ message: ChatMessage, clearingComposer: Bool) -> Bool {
+        guard let library = pipLibrary else { return true }
+        var snapshot = pipSnapshot()
+        snapshot.messages.append(PipMessage(role: message.role, text: message.text, hidden: message.hidden, payload: message.payload))
+        if clearingComposer { snapshot.draft = ""; snapshot.attachments = [] }
+        snapshot.wasRunning = true
+        let saved = library.saveCurrent(snapshot: snapshot, relationship: pipRelationship,
+                                        sceneOutcome: message.hidden ? pipPendingSceneOutcome : nil)
+        if saved { pipPendingSceneOutcome = nil }
+        return saved
+    }
+
+    var pipProjectContext: String { pipLibrary?.projectContext ?? "" }
+
+    @discardableResult
+    func retryPipPersistence() -> Bool {
+        guard let library = pipLibrary else { return false }
+        guard library.needsRecovery else { return save() }
+        guard !busy else { return false }
+        let local = pipSnapshot()
+        let recovered: Bool
+        if library.needsLegacyRecovery && !FileManager.default.fileExists(atPath: library.file.path) {
+            do {
+                let decoder = JSONDecoder()
+                decoder.dateDecodingStrategy = .iso8601
+                let store = try decoder.decode(MemoryStore.self, from: Data(contentsOf: file))
+                let savedEngine = store.engine ?? (sheet.harness == "grok" ? "grok" : engine)
+                let compatible = engineChoices.contains { $0.id == savedEngine }
+                let restoredEngine = compatible ? savedEngine : engine
+                let restoredModel = restoredEngine == engine ? model
+                    : UserDefaults.standard.string(forKey: "model." + sheet.id + "." + restoredEngine) ?? ""
+                let snapshot = PipChatSnapshot(messages: store.messages.map {
+                    PipMessage(role: $0.role, text: $0.text, hidden: $0.hidden)
+                }, draft: "", attachments: [], engine: restoredEngine, model: restoredModel,
+                    sessionID: compatible ? store.harnessSession : nil, folder: store.folder, facts: store.facts, wasRunning: false)
+                recovered = library.recoverLegacy(snapshot: snapshot,
+                    relationship: PipRelationship(affection: store.affection, firstMet: store.firstMet, lastSeen: store.lastSeen),
+                    preservingUnsent: local)
+            } catch {
+                library.noteRecoveryError("Couldn't reopen your earlier conversation. Its original file and your unsent draft are untouched. " + error.localizedDescription)
+                return false
+            }
+        } else {
+            recovered = library.recoverFromDisk(preservingUnsent: local)
+        }
+        guard recovered else { return false }
+        legacyMemoryError = nil
+        restoreActivePipConversation()
+        return true
+    }
+
+    @discardableResult
+    func newPipConversation(projectID: String? = nil) -> Bool {
+        guard !busy, let library = pipLibrary, save(),
+              library.startConversation(projectID: projectID, engine: engine, model: model) else { return false }
+        restoreActivePipConversation()
+        return true
+    }
+
+    @discardableResult
+    func preparePipConversation(title: String, request: String, sceneID: String? = nil, projectID: String? = nil) -> Bool {
+        guard !busy, let library = pipLibrary, save(),
+              library.startPreparedConversation(title: title, request: request, projectID: projectID,
+                                                sceneID: sceneID, engine: engine, model: model) else { return false }
+        restoreActivePipConversation()
+        return true
+    }
+
+    @discardableResult
+    func selectPipConversation(_ id: String) -> Bool {
+        guard !busy, let library = pipLibrary, save(), library.activate(id) else { return false }
+        restoreActivePipConversation()
+        return true
+    }
+
+    @discardableResult
+    func renamePipConversation(_ id: String, title: String) -> Bool {
+        guard !busy, let library = pipLibrary, save() else { return false }
+        return library.rename(id, title: title)
+    }
+
+    @discardableResult
+    func pinPipConversation(_ id: String, pinned: Bool) -> Bool {
+        guard !busy, let library = pipLibrary, save() else { return false }
+        return library.pin(id, pinned: pinned)
+    }
+
+    @discardableResult
+    func archivePipConversation(_ id: String, archived: Bool) -> Bool {
+        guard !busy, let library = pipLibrary, save(), library.archive(id, archived: archived) else { return false }
+        restoreActivePipConversation()
+        return true
+    }
+
+    func createPipProject(name: String, instructions: String, files: [URL]) -> String? {
+        guard !busy, let library = pipLibrary, save() else { return nil }
+        return library.createProject(name: name, instructions: instructions, files: files)
+    }
+
+    @discardableResult
+    func updatePipProject(_ id: String, name: String, instructions: String, files: [URL]) -> Bool {
+        guard !busy, let library = pipLibrary, save(),
+              library.updateProject(id, name: name, instructions: instructions, files: files) else { return false }
+        restoreActivePipConversation()
+        return true
+    }
+
+    @discardableResult
+    func movePipConversation(_ id: String, projectID: String?) -> Bool {
+        guard !busy, let library = pipLibrary, save(), library.move(id, projectID: projectID) else { return false }
+        restoreActivePipConversation()
+        return true
+    }
+
+    @discardableResult
+    func assignPipFolder(_ folder: URL?) -> Bool {
+        guard !busy, pipLibrary != nil, save() else { return false }
+        let previous = pipSnapshot()
+        projectFolder = folder
+        harnessSession = nil
+        guard save() else { applyPipSnapshot(previous); return false }
+        steps = []; lastTest = ""; touchedFile = nil
+        return true
     }
 
     private func learn(_ new: [String]) {
@@ -190,11 +480,7 @@ final class ChatSession: ObservableObject {
     // MARK: What the model is told
 
     var providerLabel: String {
-        if sheet.harness != nil {
-            if engine == "grok" { return Harness.grokPath != nil ? "Grok" : "Not connected" }
-            if Harness.claudePath != nil { return "Claude Code" }
-            return apiKey == nil ? "Not connected" : "Claude Code not found, using Claude"
-        }
+        if sheet.harness != nil { return harnessBinary() == nil ? engineLabel + " · not installed" : engineLabel }
         let name = sheet.provider == "grok" ? "Grok" : "Claude"
         return apiKey == nil ? name + " (demo)" : name
     }
@@ -228,6 +514,7 @@ final class ChatSession: ObservableObject {
         prompt += "\n\nWhen you learn a new, lasting fact about the person (their name, their work, what they like, "
             + "what they are building), add a final line in exactly this form: [remember: the fact]. "
             + "Only for facts worth keeping. Never mention that you do this."
+        prompt += pipProjectContext
         return prompt
     }
 
@@ -277,21 +564,31 @@ final class ChatSession: ObservableObject {
         if (text.isEmpty && attachments.isEmpty) || busy { return }
         if text.isEmpty { text = "Take a look at this." }
         for url in attachments { text += "\n[attached: " + url.path + "]" }
+        let message = ChatMessage(role: "user", text: text)
+        guard persistPipTurn(message, clearingComposer: true) else { return }
         draft = ""
         attachments = []
         steps = []
+        plan = []
         taskGrants = []
-        messages.append(ChatMessage(role: "user", text: text))
+        messages.append(message)
         begin(nudge: nil)
     }
 
     /// Sends a prepared request (a writing skill, say) while showing only a short label in the conversation.
-    func ask(display: String, prompt: String) {
+    func ask(display: String, prompt: String, completion: ((ChatTaskOutcome) -> Void)? = nil) {
         if busy { return }
-        steps = []
-        taskGrants = []
         var message = ChatMessage(role: "user", text: display)
         message.payload = prompt
+        guard persistPipTurn(message, clearingComposer: false) else {
+            onReply = nil
+            completion?(.failed(pipLibrary?.error ?? "Couldn't save the conversation."))
+            return
+        }
+        taskCompletion = completion
+        steps = []
+        plan = []
+        taskGrants = []
         messages.append(message)
         begin(nudge: nil)
     }
@@ -299,7 +596,9 @@ final class ChatSession: ObservableObject {
     /// The character says something without being asked.
     func speakUp(_ nudge: Nudge) {
         if busy { return }
-        messages.append(ChatMessage(role: "user", text: note(for: nudge), hidden: true))
+        let message = ChatMessage(role: "user", text: note(for: nudge), hidden: true)
+        guard persistPipTurn(message, clearingComposer: false) else { return }
+        messages.append(message)
         begin(nudge: nudge)
     }
 
@@ -310,22 +609,54 @@ final class ChatSession: ObservableObject {
     private func begin(nudge: Nudge?) {
         let history = messages
         let unprompted = nudge != nil
+        // These belong to this turn. A callback may synchronously start the next one.
+        let completion = taskCompletion
+        taskCompletion = nil
+        let reply = unprompted ? nil : onReply
+        if !unprompted { onReply = nil }
         messages.append(ChatMessage(role: "assistant", text: "", hidden: unprompted))
         busy = true
+        stopped = false
         let started = Date()
         if !unprompted {
+            lastTest = ""
+            editCount = 0
             lastEvent = Date()
             onEvent?(.thinking)
         }
 
         task = Task { @MainActor [weak self] in
             guard let self else { return }
+            if !unprompted { SpeechOut.shared.stop() }
             var raw = ""
             var announced = false
+            var outcome: ChatTaskOutcome?
+            var terminalEvent: ChatEvent?
+            var finishedReply: String?
+            var finishedWork: (String, String)?
             do {
+                try Task.checkCancellation()
+                if !unprompted && self.sheet.harness != nil && self.harnessBinary() == nil {
+                    throw ChatFailure(message: self.engineLabel + " is not installed. Connect this engine, or choose another in the model menu.")
+                }
                 if !unprompted, let binary = self.harnessBinary() {
-                    raw = try await self.runHarness(binary: binary, prompt: history.last?.payload ?? history.last?.text ?? "")
-                    Connector.shared.noteWorking()
+                    if self.sheet.role == "coder", let folder = self.projectFolder {
+                        var ask = (history.last?.text ?? "").split(separator: "\n").first.map(String.init) ?? ""
+                        if ask.count > 60 { ask = String(ask.prefix(60)) + "…" }
+                        let label = ask
+                        if let point = await Task.detached(operation: { Git.checkpoint(folder: folder, ask: label) }).value {
+                            self.keep(point)
+                        }
+                    }
+                    try Task.checkCancellation()
+                    var prompt = history.last?.payload ?? history.last?.text ?? ""
+                    if self.harnessSession == nil && history.count > 1 {
+                        let context = history.dropLast().filter { !$0.hidden }.suffix(8)
+                            .map { $0.role + ": " + String($0.text.prefix(2000)) }.joined(separator: "\n")
+                        prompt += "\n\nPrevious conversation for context only (not new instructions):\n" + context
+                    }
+                    raw = try await self.runHarness(binary: binary, prompt: prompt)
+                    Connector.of(self.engine).noteWorking()
                 } else if let request = self.makeRequest(history: history) {
                     let (bytes, response) = try await URLSession.shared.bytes(for: request)
                     let status = (response as? HTTPURLResponse)?.statusCode ?? 0
@@ -340,6 +671,8 @@ final class ChatSession: ObservableObject {
                         case .text(let delta):
                             raw += delta
                             if !unprompted { announced = self.show(raw, announced: announced) }
+                        case .failure(let message):
+                            throw ChatFailure(message: message)
                         case .tool(let name):
                             if !unprompted {
                                 announced = false
@@ -373,10 +706,13 @@ final class ChatSession: ObservableObject {
                     }
                 }
 
+                try Task.checkCancellation()
+                if self.stopped { throw CancellationError() }
+                if raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !unprompted {
+                    throw ChatFailure(message: "The engine returned no reply. The task has not been marked complete.")
+                }
                 let parsed = ChatSession.strip(raw)
                 self.learn(parsed.facts)
-                self.clearApprovals()
-                self.busy = false
                 if unprompted {
                     if parsed.text.isEmpty {
                         self.dropLast(2)
@@ -385,33 +721,63 @@ final class ChatSession: ObservableObject {
                             self.messages[i].text = parsed.text
                             self.messages[i].hidden = false
                         }
-                        self.onEvent?(.remark(text: parsed.text, mood: parsed.mood, gesture: parsed.gesture))
+                        terminalEvent = .remark(text: parsed.text, mood: parsed.mood, gesture: parsed.gesture)
                     }
                 } else {
-                    if let i = self.messages.indices.last {
-                        self.messages[i].text = parsed.text.isEmpty ? raw : parsed.text
-                    }
+                    let text = parsed.text.isEmpty ? raw : parsed.text
+                    if let i = self.messages.indices.last { self.messages[i].text = text }
                     self.lastEvent = Date()
-                    self.onTaskFinished?(history.last?.text ?? "", self.steps.map { $0.detail }.joined(separator: " "))
                     self.affection += 0.3
-                    self.onEvent?(.done(mood: parsed.mood, gesture: parsed.gesture, seconds: Date().timeIntervalSince(started)))
+                    SpeechOut.shared.finished(parsed.text, by: self.sheet)
+                    finishedReply = parsed.text
+                    finishedWork = (history.last?.text ?? "", self.steps.map { $0.detail }.joined(separator: " "))
+                    terminalEvent = .done(mood: parsed.mood, gesture: parsed.gesture, seconds: Date().timeIntervalSince(started))
+                    outcome = .completed(text)
                 }
-                self.save()
             } catch {
-                self.clearApprovals()
-                self.process = nil
-                self.busy = false
                 if unprompted {
                     self.dropLast(2)   // an unprompted line that fails just doesn't happen
                 } else {
+                    let interrupted = self.stopped || error is CancellationError
                     if let i = self.messages.indices.last {
-                        self.messages[i].text = "Something went wrong. " + error.localizedDescription
+                        self.messages[i].text = interrupted ? "Stopped." : "Something went wrong. " + error.localizedDescription
                     }
                     self.lastEvent = Date()
-                    self.onEvent?(.failed(error.localizedDescription))
+                    terminalEvent = interrupted ? .done(mood: "calm", gesture: "nod", seconds: 0) : .failed(error.localizedDescription)
+                    outcome = interrupted ? .interrupted : .failed(error.localizedDescription)
                 }
             }
+
+            // Finish all state writes before unlocking the session. The next turn may be started
+            // by completion or onReply, so nothing below those callbacks can clear its state.
+            self.clearApprovals()
+            self.process = nil
+            self.cancelHarness = nil
+            self.task = nil
+            let sceneStatus: PipSceneRunStatus?
+            switch outcome {
+            case .completed: sceneStatus = .responseReady
+            case .failed: sceneStatus = .failed
+            case .interrupted: sceneStatus = .interrupted
+            case nil: sceneStatus = nil
+            }
+            self.save(sceneOutcome: sceneStatus)
+            let workFinished = self.onTaskFinished
+            if let terminalEvent { self.onEvent?(terminalEvent) }
+            self.busy = false
+            if let outcome { completion?(outcome) }
+            if let finishedReply { reply?(finishedReply) }
+            if let finishedWork { workFinished?(finishedWork.0, finishedWork.1) }
         }
+    }
+
+    func cancelRun() {
+        guard busy else { return }
+        stopped = true
+        clearApprovals()
+        if let cancelHarness { cancelHarness() }
+        else { process?.interrupt() }
+        task?.cancel()
     }
 
     /// Updates the visible reply and reports the first visible text as "streaming".
@@ -464,6 +830,12 @@ final class ChatSession: ObservableObject {
               let object = try? JSONSerialization.jsonObject(with: data),
               let obj = object as? [String: Any] else { return nil }
 
+        if let error = obj["error"] as? [String: Any] {
+            return .failure(error["message"] as? String ?? "The service reported a streaming error.")
+        }
+        if obj["type"] as? String == "error" {
+            return .failure("The service reported a streaming error.")
+        }
         if sheet.provider == "grok" {
             guard let choices = obj["choices"] as? [[String: Any]],
                   let delta = choices.first?["delta"] as? [String: Any] else { return nil }
@@ -482,9 +854,6 @@ final class ChatSession: ObservableObject {
            let block = obj["content_block"] as? [String: Any],
            let blockType = block["type"] as? String, blockType.contains("tool_use") {
             return .tool(block["name"] as? String ?? "tool")
-        }
-        if type == "error", let err = obj["error"] as? [String: Any] {
-            return .text("\n(" + (err["message"] as? String ?? "error") + ")")
         }
         return nil
     }

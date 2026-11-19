@@ -11,6 +11,9 @@ if CommandLine.arguments.count > 1 && CommandLine.arguments[1] == "focus" {
         }
     }
     RunLoop.main.run()
+} else if CommandLine.arguments.count > 1 && CommandLine.arguments[1] == "handoff" {
+    // `Spryts handoff <who> "<task>"` queues work for another character and exits.
+    exit(Handoffs.send(Array(CommandLine.arguments.dropFirst(2))))
 } else {
     MainActor.assumeIsolated {
         let app = NSApplication.shared

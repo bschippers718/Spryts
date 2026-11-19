@@ -56,9 +56,20 @@ struct Pose {
 
     /// Ease every joint toward the target. This is what blends one behaviour into the next.
     mutating func approach(_ target: Pose, _ k: CGFloat) {
+        let blend = max(0, min(1, k))
         for key in Pose.keys {
             let current = self[keyPath: key]
-            self[keyPath: key] = current + (target[keyPath: key] - current) * k
+            // Eyes lead the head. Blinks close crisply, then reopen with a softer release.
+            let rate: CGFloat
+            if key == \Pose.eyeOpen {
+                rate = target[keyPath: key] < current ? 2.8 : 1.5
+            } else if key == \Pose.lookX || key == \Pose.lookY {
+                rate = 1.7
+            } else {
+                rate = 1
+            }
+            let amount = 1 - pow(1 - blend, rate)
+            self[keyPath: key] = current + (target[keyPath: key] - current) * amount
         }
     }
 }
@@ -85,6 +96,26 @@ private func material(_ color: NSColor, glow: Bool = false) -> SCNMaterial {
 private func shape(_ geometry: SCNGeometry, _ color: NSColor, glow: Bool = false) -> SCNNode {
     geometry.firstMaterial = material(color, glow: glow)
     return SCNNode(geometry: geometry)
+}
+
+/// An underdamped attachment that settles exactly for the elapsed time, including a slow frame.
+/// Separate instances give ears, stalks and cloth their own weight without scheduling more movement.
+private struct AttachmentSpring {
+    private(set) var value: CGFloat = 0
+    private(set) var velocity: CGFloat = 0
+
+    mutating func advance(to target: CGFloat, dt: CGFloat, frequency: CGFloat, damping: CGFloat) {
+        guard dt.isFinite, dt > 0 else { return }
+        let decay = damping * frequency
+        let oscillation = frequency * sqrt(1 - damping * damping)
+        let offset = value - target
+        let envelope = exp(-decay * dt)
+        let cosine = cos(oscillation * dt)
+        let sine = sin(oscillation * dt)
+        let wave = (velocity + decay * offset) / oscillation
+        value = target + envelope * (offset * cosine + wave * sine)
+        velocity = envelope * (velocity * cosine - (decay * velocity + frequency * frequency * offset) / oscillation * sine)
+    }
 }
 
 // MARK: - Built-in body made of simple shapes, animated entirely in code
@@ -132,8 +163,16 @@ final class ProceduralBody: CharacterBody {
     private let page = SCNNode()
     private let hipBase: CGFloat
 
-    private var spring: CGFloat = 0
-    private var springVel: CGFloat = 0
+    private var antennaPitch = AttachmentSpring()
+    private var antennaSway = AttachmentSpring()
+    private var earPitch = AttachmentSpring()
+    private var earSway = AttachmentSpring()
+    private var clothPitch = AttachmentSpring()
+    private var clothSway = AttachmentSpring()
+    private var scarfTip = AttachmentSpring()
+    private var tailMotion = AttachmentSpring()
+    private var lastAttachmentPose: Pose?
+    private var tailPhase = CGFloat.random(in: 0...(2 * .pi))
 
     init(look: Look) {
         let H = look.height
@@ -654,24 +693,63 @@ final class ProceduralBody: CharacterBody {
             bulbIndex += 1
         }
 
-        // One damped spring drives everything floppy, so it lags and settles.
-        let target = -min(abs(speed) * 0.004, 0.5)
-        springVel += (130 * (target - spring) - 9 * springVel) * dt
-        spring += springVel * dt
-        spring = max(-1.2, min(1.2, spring))
+        // Attachments react to motion already happening: a nod, a turn, a step or a landing.
+        // Measuring rates, rather than applying impulses per frame, keeps their weight consistent.
+        let elapsed = dt.isFinite ? max(0, dt) : 0
+        let previous = lastAttachmentPose ?? pose
+        func limited(_ value: CGFloat, to limit: CGFloat) -> CGFloat {
+            max(-limit, min(limit, value))
+        }
+        func angularRate(_ current: CGFloat, _ old: CGFloat) -> CGFloat {
+            guard elapsed > 0 else { return 0 }
+            let delta = current - old
+            return limited(atan2(sin(delta), cos(delta)) / elapsed, to: 12)
+        }
+        let headNod = angularRate(pose.lean + pose.headPitch, previous.lean + previous.headPitch)
+        let headLean = angularRate(pose.tilt + pose.headTilt, previous.tilt + previous.headTilt)
+        let turn = angularRate(pose.yaw + pose.spin + pose.headYaw, previous.yaw + previous.spin + previous.headYaw)
+        let torsoNod = angularRate(pose.lean, previous.lean)
+        let torsoLean = angularRate(pose.tilt, previous.tilt)
+        let heave = elapsed > 0 ? limited(((pose.bodyY - previous.bodyY) / max(1, height)
+            + (pose.squash - previous.squash) * 0.5) / elapsed, to: 4) : 0
+        let stream = -min(abs(speed) * 0.004, 0.5)
+        let headForce = limited(stream - headNod * 0.035 + heave * 0.045, to: 0.7)
+        let sideForce = limited(-headLean * 0.045 - turn * 0.018, to: 0.35)
+        let clothForce = limited(stream - torsoNod * 0.045 + heave * 0.035, to: 0.65)
+        antennaPitch.advance(to: headForce, dt: elapsed, frequency: 13, damping: 0.56)
+        antennaSway.advance(to: sideForce, dt: elapsed, frequency: 11, damping: 0.62)
+        earPitch.advance(to: headForce, dt: elapsed, frequency: 10, damping: 0.66)
+        earSway.advance(to: sideForce, dt: elapsed, frequency: 8.5, damping: 0.72)
+        clothPitch.advance(to: clothForce, dt: elapsed, frequency: 8, damping: 0.72)
+        clothSway.advance(to: limited(-torsoLean * 0.04 - turn * 0.025, to: 0.3), dt: elapsed, frequency: 7, damping: 0.75)
+        scarfTip.advance(to: clothPitch.value, dt: elapsed, frequency: 6, damping: 0.72)
+        lastAttachmentPose = pose
+
         var antennaIndex = 0
         for a in antennas {
             let lean: CGFloat = antennas.count == 2 ? (antennaIndex == 0 ? 0.3 : -0.3) : 0
-            a.eulerAngles = v3(spring + 0.35 * pose.twitch * sin(time * 34), 0, lean + springVel * 0.03)
+            let weight: CGFloat = antennaIndex == 0 ? 1 : 0.88
+            a.eulerAngles = v3(antennaPitch.value * weight + 0.35 * pose.twitch * sin(time * 34),
+                              0, lean + antennaSway.value * weight)
             antennaIndex += 1
         }
-        cape?.eulerAngles = v3(0.12 - spring * 1.6, 0, springVel * 0.01)
-        tail?.eulerAngles = v3(spring * 0.6, tailWag * sin(time * 3.2), 0)
+        cape?.eulerAngles = v3(0.12 - clothPitch.value * 1.6, 0, clothSway.value)
+
+        // A content tail is quiet; delight brings it to life, and it settles during a nap.
+        // Low glow distinguishes resting eyes from an ordinary blink or happy squint.
+        let resting = pose.eyeOpen < 0.2 && pose.glow < 0.12
+        let delight = max(0, min(1, pose.smile))
+        let movement = min(1, abs(speed) / 130)
+        let wag = resting ? 0 : tailWag * (0.12 + 0.35 * delight + 0.5 * blush + 0.25 * movement)
+        tailPhase = (tailPhase + elapsed * (1.5 + 1.7 * delight + 0.8 * movement)).truncatingRemainder(dividingBy: 2 * .pi)
+        tailMotion.advance(to: wag * sin(tailPhase) + clothSway.value * 0.7,
+                           dt: elapsed, frequency: 7, damping: 0.78)
+        tail?.eulerAngles = v3(clothPitch.value * 0.6, tailMotion.value, 0)
         if ears.count == 2 {
-            let flick = 0.3 * pose.twitch * sin(time * 34)
+            let flick = 0.3 * pose.twitch * sin(time * 34) * min(1, earFlop)
             let pinned = -1.25 * max(0, min(1, pose.earsBack)) * min(1, earFlop)
-            ears[0].eulerAngles = v3(spring * earFlop + pinned, 0, earTilt + springVel * 0.02 * earFlop + flick)
-            ears[1].eulerAngles = v3(spring * earFlop + pinned, 0, -earTilt - springVel * 0.02 * earFlop - flick)
+            ears[0].eulerAngles = v3(earPitch.value * earFlop + pinned, 0, earTilt + earSway.value * earFlop + flick)
+            ears[1].eulerAngles = v3(earPitch.value * earFlop * 0.9 + pinned, 0, -earTilt + earSway.value * earFlop * 0.9 - flick)
         }
         if wings.count == 2 {
             let flap = max(0, min(1, pose.flap))
@@ -681,8 +759,8 @@ final class ProceduralBody: CharacterBody {
         }
         if scarfSegments.count == 2 {
             let flutter = sin(time * 9) * min(1, abs(speed) / 100)
-            scarfSegments[0].eulerAngles = v3(0.35 + min(1.2, -spring * 2.6) + 0.08 * flutter, 0, springVel * 0.02)
-            scarfSegments[1].eulerAngles = v3(0.2 - spring * 0.8 + 0.25 * flutter, 0, 0)
+            scarfSegments[0].eulerAngles = v3(0.35 + min(1.2, -clothPitch.value * 2.6) + 0.08 * flutter, 0, clothSway.value)
+            scarfSegments[1].eulerAngles = v3(0.2 - scarfTip.value * 0.8 + 0.18 * flutter, 0, clothSway.value * 0.6)
         }
         prop.isHidden = !(showProp && pose.prop == 1)
         page.isHidden = !(showProp && pose.prop == 2)

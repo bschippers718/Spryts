@@ -11,10 +11,10 @@ struct ChatView: View {
     @ObservedObject private var focus = FocusKeeper.shared
     let name: String
     let tint: Color
-    @ObservedObject private var connector = Connector.shared
     let role: String
     @FocusState private var typing: Bool
     @State private var branch = ""
+    @State private var speaks = false
     @Environment(\.colorScheme) private var systemScheme
 
     private var visibleMessages: [ChatMessage] {
@@ -33,30 +33,28 @@ struct ChatView: View {
         if !isCoder && !isWriter && !isGeneralist { return "Ask \(name) anything." }
         if isCoder { return "\(name) is the programmer. Click to open the IDE, or ask a quick question about the code here." }
         if isWriter { return "\(name) is the writer. Click to open the studio, or ask for a word, a line or a fix here." }
-        return "Ask \(name) to do something on this Mac. Click to open the desk with all your apps."
+        return "\(name) runs your day: your calendar, mail, follow-ups and this Mac. Ask for a brief, tell \(name) what you promised, or click for your desk."
     }
     private var theme: RoleTheme { RoleTheme.of(role) }
 
+    /// Glass needs no rules between its parts; the painted papers keep theirs.
     @ViewBuilder
-    private var panelBackground: some View {
-        if let paper = theme.paper {
-            paper
-        } else {
-            Rectangle().fill(.regularMaterial)
-        }
+    private var rule: some View {
+        if !theme.glass { Divider() }
     }
 
     var body: some View {
         VStack(spacing: 0) {
             header
-            Divider()
+            rule
             roleStrip
-            Divider()
+            rule
             transcript
             if let approval = session.approval {
-                approvalCard(approval)
+                ApprovalCardView(session: session, approval: approval, name: name)
+                    .padding(.horizontal, 10)
             }
-            Divider()
+            rule
             if !session.attachments.isEmpty {
                 attachmentRow
             }
@@ -64,9 +62,7 @@ struct ChatView: View {
             inputRow
         }
         .frame(width: chatPanelSize.width, height: chatPanelSize.height)
-        .background(panelBackground)
-        .clipShape(RoundedRectangle(cornerRadius: theme.corner, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: theme.corner, style: .continuous).stroke(tint.opacity(0.5), lineWidth: 1.5))
+        .modifier(PanelSurface(theme: theme, tint: tint))
         .fontDesign(theme.design)
         .environment(\.colorScheme, theme.scheme ?? systemScheme)
         .onDrop(of: [UTType.fileURL], isTargeted: nil) { providers in
@@ -81,6 +77,7 @@ struct ChatView: View {
         .onChange(of: session.focusTick) {
             typing = true
         }
+        .onAppear { speaks = SpeechOut.isOn(session.sheet.id) }
     }
 
     // MARK: Pieces
@@ -118,6 +115,8 @@ struct ChatView: View {
             if session.busy {
                 Button(action: { session.stop() }) {
                     Image(systemName: "stop.circle.fill")
+                        .font(.system(size: 15))
+                        .foregroundStyle(theme.glass ? Color.red : Color.primary)
                 }
                 .buttonStyle(.plain)
                 .help("Stop")
@@ -144,21 +143,13 @@ struct ChatView: View {
                 Button("Play Orange Smash") { session.onPlay?() }
             }
             Divider()
-            if session.modelChoices.count > 1 {
-                Menu("Model: " + session.modelLabel) {
-                    ForEach(session.modelChoices, id: \.id) { choice in
-                        Button(action: { session.model = choice.id }) {
-                            if choice.id == session.model {
-                                Label(choice.label, systemImage: "checkmark")
-                            } else {
-                                Text(choice.label)
-                            }
-                        }
-                    }
-                }
-            }
+            EngineModelMenu(session: session)
             Button("New conversation") { session.newConversation() }
                 .disabled(session.busy)
+            Button(speaks ? "Stop reading replies aloud" : "Read replies aloud") {
+                speaks.toggle()
+                SpeechOut.set(speaks, for: session.sheet.id)
+            }
             Divider()
             Text(session.providerLabel)
         } label: {
@@ -170,7 +161,7 @@ struct ChatView: View {
         .help("More")
     }
 
-    /// The strip under the header is where each role differs: apps for the generalist, the project for the programmer.
+    /// The strip under the header is where each role differs: the day for the chief of staff, the project for the programmer.
     private var roleStrip: some View {
         Group {
             if isCoder {
@@ -182,7 +173,7 @@ struct ChatView: View {
             } else if isCoach {
                 CoachStrip(session: session, journal: TrainingJournal.of(session.sheet.id), tint: tint)
             } else if isGeneralist {
-                appStrip
+                OfficeStrip(session: session, office: Office.of(session.sheet.id), tint: tint)
             } else {
                 // A role with no strip of its own shows nothing here. It never borrows another character's.
                 EmptyView()
@@ -235,18 +226,13 @@ struct ChatView: View {
                     .help(session.lastTest)
             }
             Spacer()
-            Button(action: { session.onOpenWorkspace?() }) {
-                Text("Open workspace")
-                    .font(.system(size: 11, weight: .semibold))
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(tint.opacity(0.3))
-                    .clipShape(Capsule())
-            }
-            .buttonStyle(.plain)
+            Button("Open IDE") { session.onOpenWorkspace?() }
+                .capsuleButton(tint: tint, prominent: true)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 9)
+        .background(Surface.card.opacity(0.6), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .padding(.horizontal, 10)
         .onAppear { refreshBranch() }
         .onChange(of: session.showTick) { refreshBranch() }
         .onChange(of: session.projectFolder) { refreshBranch() }
@@ -257,52 +243,6 @@ struct ChatView: View {
             branch = WorkspaceModel.git(["rev-parse", "--abbrev-ref", "HEAD"], in: folder)
         } else {
             branch = ""
-        }
-    }
-
-    /// Open apps, most recently used first, then apps that were recently quit.
-    private var appStrip: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 6) {
-                ForEach(shelf.running) { app in
-                    appButton(app)
-                }
-                if !shelf.recent.isEmpty {
-                    Rectangle().fill(Color.primary.opacity(0.15)).frame(width: 1, height: 26)
-                    ForEach(shelf.recent) { app in
-                        appButton(app).opacity(0.5)
-                    }
-                }
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-        }
-    }
-
-    private func appButton(_ app: AppItem) -> some View {
-        Button(action: { shelf.open(app) }) {
-            VStack(spacing: 2) {
-                Image(nsImage: app.icon)
-                    .resizable()
-                    .frame(width: 30, height: 30)
-                Circle()
-                    .fill(app.front ? tint : Color.clear)
-                    .frame(width: 4, height: 4)
-            }
-        }
-        .buttonStyle(.plain)
-        .help(app.running ? app.name : app.name + " (recently quit)")
-        .contextMenu {
-            Button("Ask \(name) about \(app.name)") {
-                session.draft = "In \(app.name): "
-                session.focusTick += 1
-            }
-            if app.running {
-                Button("Hide") { shelf.hide(app) }
-                Button("Quit") { shelf.quit(app) }
-            } else {
-                Button("Open") { shelf.open(app) }
-            }
         }
     }
 
@@ -358,13 +298,16 @@ struct ChatView: View {
                 .lineLimit(1)
                 .truncationMode(.middle)
             Spacer(minLength: 0)
-            if count > 1 {
+            if isCoder && !session.plan.isEmpty {
+                Text("\(session.plan.filter { $0.status == "done" }.count) of \(session.plan.count)")
+                    .font(.system(size: 10)).foregroundColor(.secondary)
+                    .help(session.plan.first(where: { $0.status == "active" })?.active ?? "")
+            } else if count > 1 {
                 Text("step \(count)").font(.system(size: 10)).foregroundColor(.secondary)
             }
         }
         .padding(8)
-        .background(Color.primary.opacity(0.05))
-        .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+        .background(.fill.tertiary, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
     /// What the agent has done so far in this task.
@@ -408,41 +351,6 @@ struct ChatView: View {
         case "denied": return .red
         default: return .secondary
         }
-    }
-
-    private func approvalCard(_ approval: Approval) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
-                Image(systemName: approval.danger ? "exclamationmark.shield.fill" : "hand.raised.fill")
-                    .foregroundColor(approval.danger ? .red : .orange)
-                Text("\(name) wants to use \(approval.tool)")
-                    .font(.system(size: 12, weight: .semibold))
-            }
-            if !approval.detail.isEmpty {
-                Text(approval.detail)
-                    .font(.system(size: 11, design: .monospaced))
-                    .lineLimit(5)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(7)
-                    .background(Color.primary.opacity(0.06))
-                    .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
-            }
-            HStack(spacing: 8) {
-                Button("Deny") { session.decide(allow: false, forTask: false) }
-                Spacer()
-                if !approval.danger {
-                    Button("Always allow") { session.decide(allow: true, forTask: true, always: true) }
-                        .help("Never ask \(name) again about " + approval.grantLabel + ". Risky actions still ask.")
-                    Button("This task") { session.decide(allow: true, forTask: true) }
-                        .help("Allow " + approval.grantLabel + " until this task is finished.")
-                }
-                Button("Allow once") { session.decide(allow: true, forTask: false) }
-                    .keyboardShortcut(.defaultAction)
-            }
-            .controlSize(.small)
-        }
-        .padding(10)
-        .background((approval.danger ? Color.red : Color.orange).opacity(0.12))
     }
 
     private var attachmentRow: some View {
@@ -490,8 +398,8 @@ struct ChatView: View {
 
     private var quickActions: some View {
         Group {
-            if session.sheet.harness != nil && connector.needsConnecting {
-                ConnectCard(name: name, tint: tint)
+            if session.sheet.harness != nil {
+                ConnectCard(connector: Connector.of(session.engine), name: name, tint: tint)
             }
             if session.busy {
                 // Shortcuts are no use mid-task. On a long task, offer the game instead.
@@ -611,51 +519,24 @@ struct ChatView: View {
         }
     }
 
+    /// The chief of staff's four: the day, the next thing, getting something off your mind, and clearing the screen.
     private var generalActions: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
+                chip(Office.of(session.sheet.id).isCurrent ? "Refresh brief" : "Brief me") {
+                    session.ask(display: "Brief me", prompt: Office.briefPrompt)
+                }
+                chip("What's next?") {
+                    session.ask(display: "What's next?", prompt: Office.nextPrompt)
+                }
+                chip("Capture…") {
+                    session.draft = "Remember for me: "
+                    session.focusTick += 1
+                }
                 if focus.sweepActive {
                     chip("Bring it all back") { runFocus("Bring it all back") { await FocusKeeper.shared.back() } }
                 } else {
                     chip("I'm overwhelmed") { runFocus("I'm overwhelmed") { await FocusKeeper.shared.sweep() } }
-                }
-                chip("Where was I?") {
-                    runFocus("Where was I?") {
-                        FocusKeeper.awaySummary() ?? "I haven't seen you step away yet. When you do, I'll remember what was open."
-                    }
-                }
-                if focus.hasAway {
-                    chip("Put it back") { runFocus("Put it back") { await FocusKeeper.shared.restoreAway() } }
-                }
-                chip("Save this setup") { runFocus("Save this setup") { await FocusKeeper.shared.save(as: "") } }
-                if !focus.saved.isEmpty {
-                    Menu {
-                        ForEach(focus.saved, id: \.self) { name in
-                            Button(name) { runFocus("Restore \(name)") { await FocusKeeper.shared.restore(named: name) } }
-                        }
-                    } label: {
-                        Text("Setups").font(.system(size: 11))
-                    }
-                    .menuStyle(.borderlessButton)
-                    .fixedSize()
-                    .disabled(session.busy)
-                }
-                chip("What's on my screen?") {
-                    session.draft = "Take a screenshot and tell me what's on my screen."
-                    session.send()
-                }
-                chip("Use clipboard") {
-                    let text = NSPasteboard.general.string(forType: .string) ?? ""
-                    session.draft = "Here is what's on my clipboard:\n" + String(text.prefix(4000)) + "\n\n"
-                    session.focusTick += 1
-                }
-                chip("Tidy windows") {
-                    session.draft = "Arrange my open windows neatly so I can see the ones I'm using."
-                    session.send()
-                }
-                chip("What can you do?") {
-                    session.draft = "What can you do on this Mac? Give me five concrete examples."
-                    session.send()
                 }
             }
             .padding(.horizontal, 12)
@@ -675,17 +556,26 @@ struct ChatView: View {
         }
     }
 
+    @ViewBuilder
     private func chip(_ title: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(title)
-                .font(.system(size: 11))
-                .padding(.horizontal, 9)
-                .padding(.vertical, 4)
-                .background(tint.opacity(0.18))
-                .clipShape(Capsule())
+        if theme.glass {
+            Button(title, action: action)
+                .buttonStyle(.glass)
+                .buttonBorderShape(.capsule)
+                .controlSize(.small)
+                .disabled(session.busy)
+        } else {
+            Button(action: action) {
+                Text(title)
+                    .font(.system(size: 11))
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 4)
+                    .background(tint.opacity(0.18))
+                    .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .disabled(session.busy)
         }
-        .buttonStyle(.plain)
-        .disabled(session.busy)
     }
 
     private var placeholder: String {
@@ -693,12 +583,13 @@ struct ChatView: View {
         if isWriter { return "Ask \(name) about words…" }
         if isCoach { return "Tell \(name) how it went, or ask for a session…" }
         if isForecaster { return "Ask \(name) about the weather…" }
-        if isGeneralist { return "Ask \(name) or give a command…" }
+        if isGeneralist { return "Ask \(name), or say what's on your plate…" }
         return "Ask \(name)…"
     }
 
+    @ViewBuilder
     private var inputRow: some View {
-        HStack(spacing: 8) {
+        let field = HStack(spacing: 8) {
             TextField(placeholder, text: $session.draft)
                 .textFieldStyle(.plain)
                 .font(.system(size: 13))
@@ -706,24 +597,87 @@ struct ChatView: View {
                 .onSubmit { session.send() }
             if session.busy {
                 ProgressView().controlSize(.small)
+            } else {
+                Button(action: {
+                    typing = true
+                    SpeechOut.dictate()
+                }) {
+                    Image(systemName: "mic").font(.system(size: 13))
+                }
+                .buttonStyle(.plain)
+                .foregroundColor(.secondary)
+                .help("Dictate (macOS Dictation)")
+                if theme.glass {
+                    Button(action: { session.send() }) {
+                        Image(systemName: "arrow.up.circle.fill").font(.system(size: 20))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(session.draft.isEmpty ? Color.secondary : tint)
+                    .disabled(session.draft.isEmpty)
+                }
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+        if theme.glass {
+            field
+                .padding(.leading, 14)
+                .padding(.trailing, 6)
+                .frame(minHeight: 34)
+                .background(Surface.text.opacity(0.7), in: Capsule())
+                .overlay(Capsule().strokeBorder(Surface.separator, lineWidth: 0.5))
+                .padding(.horizontal, 10)
+                .padding(.top, 8)
+                .padding(.bottom, 10)
+        } else {
+            field
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+        }
     }
 
     private func bubble(_ message: ChatMessage) -> some View {
         let mine = message.role == "user"
         return HStack {
             if mine { Spacer(minLength: 40) }
-            Text(message.text.isEmpty ? "…" : message.text)
-                .font(.system(size: 13))
-                .textSelection(.enabled)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 7)
-                .background(mine ? tint.opacity(0.28) : Color.primary.opacity(0.07))
-                .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
-            if !mine { Spacer(minLength: 40) }
+            Group {
+                if mine || message.text.isEmpty {
+                    Text(message.text.isEmpty ? "…" : message.text)
+                        .font(.system(size: 13))
+                        .textSelection(.enabled)
+                } else {
+                    MarkdownView(text: message.text)
+                }
+            }
+            .padding(.horizontal, theme.glass ? 12 : 10)
+            .padding(.vertical, 7)
+            .foregroundStyle(mine && theme.glass ? Color.white : Color.primary)
+            .background(bubbleFill(mine), in: RoundedRectangle(cornerRadius: theme.glass ? 17 : 11, style: .continuous))
+            if !mine { Spacer(minLength: 24) }
+        }
+    }
+
+    /// Messages-style on glass: yours filled with the character's colour, theirs on a solid card.
+    private func bubbleFill(_ mine: Bool) -> AnyShapeStyle {
+        if theme.glass { return mine ? AnyShapeStyle(tint) : AnyShapeStyle(Surface.card) }
+        return mine ? AnyShapeStyle(tint.opacity(0.28)) : AnyShapeStyle(Color.primary.opacity(0.07))
+    }
+}
+
+/// The popup's surface: Liquid Glass for the native characters, the character's own paper for the rest.
+private struct PanelSurface: ViewModifier {
+    let theme: RoleTheme
+    let tint: Color
+
+    func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: theme.corner, style: .continuous)
+        if let paper = theme.paper {
+            content
+                .background(paper)
+                .clipShape(shape)
+                .overlay(shape.stroke(tint.opacity(0.5), lineWidth: 1.5))
+        } else {
+            content
+                .clipShape(shape)
+                .glassEffect(.regular.tint(tint.opacity(0.06)), in: shape)
         }
     }
 }
@@ -805,9 +759,7 @@ struct SpeechView: View {
             .frame(width: 210)
             .padding(.horizontal, 12)
             .padding(.vertical, 9)
-            .background(.regularMaterial)
-            .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 13, style: .continuous).stroke(Color.primary.opacity(0.12), lineWidth: 1))
+            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 }
 

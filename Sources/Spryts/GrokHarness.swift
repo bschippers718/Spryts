@@ -58,6 +58,7 @@ extension Harness {
         case "web_search": return "WebSearch"
         case "web_fetch": return "WebFetch"
         case "spawn_subagent": return "Task"
+        case "todo_write", "update_todos", "write_todos", "todo": return "TodoWrite"
         default: return tool
         }
     }
@@ -125,9 +126,6 @@ extension Harness {
 }
 
 extension ChatSession {
-    /// The agent behind this character.
-    var engine: String { sheet.harness == "grok" ? "grok" : Engine.current }
-
     static let grokModels: [(id: String, label: String)] = [
         ("grok-default", "Grok default"),
         ("grok-4.6", "Grok 4.6"),
@@ -174,6 +172,11 @@ extension ChatSession {
         if sheet.role == "forecaster" {
             try FileManager.default.createDirectory(at: Harness.forecastFolder(for: sheet.id), withIntermediateDirectories: true)
         }
+        if (sheet.role ?? "generalist") == "generalist" {
+            let office = Harness.officeFolder(for: sheet.id)
+            try FileManager.default.createDirectory(at: office.appendingPathComponent("people"), withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(at: office.appendingPathComponent("daily"), withIntermediateDirectories: true)
+        }
         if model.hasPrefix("grok-") && model != "grok-default" { arguments += ["-m", model] }
         return arguments
     }
@@ -186,6 +189,7 @@ extension ChatSession {
             let path = URL(fileURLWithPath: item.path).standardizedFileURL.path
             if sheet.role == "coach" && path.hasPrefix(Harness.trainingFolder(for: sheet.id).standardizedFileURL.path + "/") { return true }
             if sheet.role == "forecaster" && path.hasPrefix(Harness.forecastFolder(for: sheet.id).standardizedFileURL.path + "/") { return true }
+            if (sheet.role ?? "generalist") == "generalist" && path.hasPrefix(Harness.officeFolder(for: sheet.id).standardizedFileURL.path + "/") { return true }
             if sheet.role == "coder", let folder = projectFolder, path.hasPrefix(folder.standardizedFileURL.path + "/") { return true }
             return false
         }

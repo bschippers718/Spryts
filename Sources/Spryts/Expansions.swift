@@ -8,13 +8,15 @@ struct RoleTheme {
     let scheme: ColorScheme?     // nil follows the system
     let design: Font.Design
     let corner: CGFloat
-    let paper: Color?            // nil uses translucent system material
+    let paper: Color?            // nil uses Liquid Glass
+    var glass: Bool { paper == nil }
 
     static func of(_ role: String) -> RoleTheme {
         switch role {
         case "coder":
-            return RoleTheme(scheme: .dark, design: .monospaced, corner: 9,
-                             paper: Color(red: 0.09, green: 0.09, blue: 0.13))
+            return RoleTheme(scheme: nil, design: .default, corner: 22, paper: nil)
+        case "generalist":
+            return RoleTheme(scheme: nil, design: .default, corner: 30, paper: nil)
         case "writer":
             return RoleTheme(scheme: .light, design: .serif, corner: 14,
                              paper: Color(red: 0.98, green: 0.96, blue: 0.91))
@@ -41,331 +43,75 @@ protocol Expansion: AnyObject {
     func close()
 }
 
-// MARK: - Pip's desk: the launcher only he has
-
-struct DeskAction: Identifiable {
-    let id: Int
-    let title: String
-    let icon: String
-    let prompt: String
-}
-
-struct DeskView: View {
-    @ObservedObject var session: ChatSession
-    @ObservedObject var shelf: AppShelf
-    let name: String
-    let tint: Color
-    let onClose: () -> Void
-    @FocusState private var typing: Bool
-
-    private let actions: [DeskAction] = [
-        DeskAction(id: 1, title: "What's on my screen?", icon: "eye", prompt: "Take a screenshot and tell me what's on my screen."),
-        DeskAction(id: 2, title: "Tidy my windows", icon: "rectangle.3.group", prompt: "Arrange my open windows neatly so I can see the ones I'm using."),
-        DeskAction(id: 3, title: "Clear the decks", icon: "moon", prompt: "Hide every app except the one I'm using."),
-        DeskAction(id: 4, title: "What's on today?", icon: "calendar", prompt: "Look at my calendar for today and tell me what's coming up."),
-        DeskAction(id: 5, title: "Clean up Downloads", icon: "tray.full", prompt: "Look at my Downloads folder and suggest what to tidy. Don't move or delete anything yet."),
-        DeskAction(id: 6, title: "What can you do?", icon: "sparkles", prompt: "What can you do on this Mac? Give me five concrete examples.")
-    ]
-
-    /// Typing a single word narrows the app grid, so the bar doubles as a launcher.
-    private var filter: String {
-        let text = session.draft.trimmingCharacters(in: .whitespaces)
-        return text.contains(" ") ? "" : text.lowercased()
-    }
-
-    private func matches(_ app: AppItem) -> Bool {
-        filter.isEmpty || app.name.lowercased().contains(filter)
-    }
-
-    var body: some View {
-        VStack(spacing: 0) {
-            commandBar
-            HStack(alignment: .top, spacing: 0) {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 18) {
-                        section("Open now")
-                        appGrid(shelf.running.filter { matches($0) })
-                        if !shelf.recent.filter({ matches($0) }).isEmpty {
-                            section("Recently used")
-                            appGrid(shelf.recent.filter { matches($0) }).opacity(0.6)
-                        }
-                        if !shelf.rows.isEmpty {
-                            section("Recent activity")
-                            activityList
-                        }
-                        section("Ask \(name) to…")
-                        actionGrid
-                    }
-                    .padding(22)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                sidePanel
-                    .frame(width: 310)
-                    .frame(maxHeight: .infinity)
-                    .background(Color.primary.opacity(0.05))
-            }
-        }
-        .frame(width: 960, height: 610)
-        .background(.ultraThinMaterial)
-        .background(tint.opacity(0.10))
-        .clipShape(RoundedRectangle(cornerRadius: 30, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 30, style: .continuous).stroke(tint.opacity(0.45), lineWidth: 1.5))
-        .fontDesign(.rounded)
-        .onExitCommand { onClose() }
-        .onChange(of: session.focusTick) { typing = true }
-        .onAppear { typing = true }
-    }
-
-    private var commandBar: some View {
-        HStack(spacing: 12) {
-            Circle().fill(tint).frame(width: 16, height: 16)
-            TextField("Ask \(name) anything, or type an app's name", text: $session.draft)
-                .textFieldStyle(.plain)
-                .font(.system(size: 20, weight: .medium))
-                .focused($typing)
-                .onSubmit { submit() }
-            if session.busy {
-                Button(action: { session.stop() }) {
-                    Image(systemName: "stop.circle.fill").font(.system(size: 20))
-                }
-                .buttonStyle(.plain)
-            }
-            Button(action: onClose) {
-                Image(systemName: "xmark.circle.fill").font(.system(size: 20)).foregroundColor(.secondary)
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(.horizontal, 24)
-        .padding(.vertical, 18)
-        .background(Color.primary.opacity(0.06))
-    }
-
-    /// Return opens the app if the text names exactly one; otherwise it goes to the agent.
-    private func submit() {
-        let hits = shelf.running.filter { matches($0) } + shelf.recent.filter { matches($0) }
-        if !filter.isEmpty && hits.count == 1 {
-            session.draft = ""
-            shelf.open(hits[0])
-            onClose()
-        } else {
-            session.send()
-        }
-    }
-
-    private func section(_ title: String) -> some View {
-        Text(title.uppercased())
-            .font(.system(size: 11, weight: .bold))
-            .foregroundColor(.secondary)
-            .kerning(0.8)
-    }
-
-    private func appGrid(_ apps: [AppItem]) -> some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 86), spacing: 12)], alignment: .leading, spacing: 14) {
-            ForEach(apps) { app in
-                Button(action: {
-                    shelf.open(app)
-                    onClose()
-                }) {
-                    VStack(spacing: 6) {
-                        Image(nsImage: app.icon)
-                            .resizable()
-                            .frame(width: 54, height: 54)
-                        Text(app.name)
-                            .font(.system(size: 11, weight: app.front ? .bold : .regular))
-                            .lineLimit(1)
-                    }
-                    .frame(width: 86)
-                    .padding(.vertical, 8)
-                    .background(app.front ? tint.opacity(0.22) : Color.clear)
-                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                }
-                .buttonStyle(.plain)
-                .contextMenu {
-                    Button("Ask \(name) about \(app.name)") {
-                        session.draft = "In \(app.name): "
-                        session.focusTick += 1
-                    }
-                    if app.running {
-                        Button("Hide") { shelf.hide(app) }
-                        Button("Quit") { shelf.quit(app) }
-                    }
-                }
-            }
-        }
-    }
-
-    /// What has been going on in each recently used app: when, for how long, which windows, and what the agent did there.
-    private var activityList: some View {
-        VStack(spacing: 7) {
-            ForEach(shelf.rows) { row in
-                HStack(alignment: .top, spacing: 11) {
-                    Image(nsImage: row.icon)
-                        .resizable()
-                        .frame(width: 30, height: 30)
-                    VStack(alignment: .leading, spacing: 3) {
-                        HStack(spacing: 7) {
-                            Text(row.name).font(.system(size: 13, weight: .semibold))
-                            Text(row.when + " · " + row.spent)
-                                .font(.system(size: 11))
-                                .foregroundColor(.secondary)
-                        }
-                        if !row.windows.isEmpty {
-                            Text(row.windows.joined(separator: "  ·  "))
-                                .font(.system(size: 11))
-                                .foregroundColor(.secondary)
-                                .lineLimit(1)
-                                .truncationMode(.tail)
-                        }
-                        if let note = row.note {
-                            Text("\(name): " + note)
-                                .font(.system(size: 11, weight: .medium))
-                                .foregroundColor(tint)
-                                .lineLimit(1)
-                        }
-                    }
-                    Spacer(minLength: 0)
-                    Button("Ask") {
-                        session.draft = "In \(row.name): "
-                        session.focusTick += 1
-                    }
-                    .buttonStyle(.plain)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(tint)
-                    if let item = row.item {
-                        Button("Open") {
-                            shelf.open(item)
-                            onClose()
-                        }
-                        .buttonStyle(.plain)
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(.secondary)
-                    }
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 9)
-                .background(Color.primary.opacity(0.05))
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            }
-        }
-    }
-
-    private var actionGrid: some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 170), spacing: 12)], alignment: .leading, spacing: 12) {
-            ForEach(actions) { action in
-                Button(action: {
-                    session.draft = action.prompt
-                    session.send()
-                }) {
-                    HStack(spacing: 10) {
-                        Image(systemName: action.icon)
-                            .font(.system(size: 16, weight: .semibold))
-                            .frame(width: 22)
-                        Text(action.title)
-                            .font(.system(size: 13, weight: .semibold))
-                            .lineLimit(1)
-                        Spacer(minLength: 0)
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 13)
-                    .background(tint.opacity(0.24))
-                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                }
-                .buttonStyle(.plain)
-                .disabled(session.busy)
-            }
-        }
-    }
-
-    private var sidePanel: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text(session.busy ? "\(name) is on it" : "\(name)")
-                .font(.system(size: 15, weight: .bold))
-                .padding(.horizontal, 16)
-                .padding(.top, 16)
-                .padding(.bottom, 8)
-            ScrollViewReader { proxy in
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 9) {
-                        ForEach(session.messages.filter { !$0.hidden }.suffix(10)) { message in
-                            Text(message.text.isEmpty ? "…" : message.text)
-                                .font(.system(size: 12))
-                                .textSelection(.enabled)
-                                .padding(.horizontal, 11)
-                                .padding(.vertical, 8)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .background(message.role == "user" ? tint.opacity(0.26) : Color.primary.opacity(0.07))
-                                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                        }
-                        ForEach(session.steps) { step in
-                            HStack(spacing: 6) {
-                                Image(systemName: step.state == "running" ? "circle.dotted" : (step.state == "done" ? "checkmark.circle.fill" : "xmark.circle.fill"))
-                                    .font(.system(size: 10))
-                                    .foregroundColor(step.state == "done" ? .green : .secondary)
-                                Text(step.detail.isEmpty ? step.tool : step.detail)
-                                    .font(.system(size: 11))
-                                    .foregroundColor(.secondary)
-                                    .lineLimit(1)
-                                    .truncationMode(.middle)
-                            }
-                        }
-                        Color.clear.frame(height: 1).id("end")
-                    }
-                    .padding(.horizontal, 14)
-                }
-                .defaultScrollAnchor(.bottom)
-                .onChange(of: session.messages) { proxy.scrollTo("end", anchor: .bottom) }
-            }
-            if let approval = session.approval {
-                ApprovalCardView(session: session, approval: approval, name: name)
-            }
-        }
-    }
-}
+// MARK: - Pip's workspace
 
 @MainActor
-final class DeskController: Expansion {
-    private let panel: KeyPanel
+final class DeskController: NSObject, Expansion, NSWindowDelegate {
+    static let size = CGSize(width: 1180, height: 760)
+    private let window: NSWindow
     private let session: ChatSession
     private let shelf: AppShelf
 
-    init(session: ChatSession, sheet: CharacterSheet, shelf: AppShelf) {
+    init(session: ChatSession, sheet: CharacterSheet, shelf: AppShelf, team: [ChatSession]) {
         self.session = session
         self.shelf = shelf
-        let rect = NSRect(x: 0, y: 0, width: 960, height: 610)
-        panel = KeyPanel(contentRect: rect, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
-        panel.isOpaque = false
-        panel.backgroundColor = .clear
-        panel.hasShadow = true
-        panel.level = .floating
-        panel.isFloatingPanel = true
-        panel.hidesOnDeactivate = false
-        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        let view = DeskView(session: session, shelf: shelf, name: sheet.name,
-                            tint: Color(nsColor: NSColor(hex: sheet.look.body)),
-                            onClose: { [weak panel] in panel?.orderOut(nil) })
-        let host = NSHostingView(rootView: view)
-        host.frame = rect
-        panel.contentView = host
+        let rect = NSRect(origin: .zero, size: DeskController.size)
+        window = NSWindow(contentRect: rect, styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
+        super.init()
+        window.delegate = self
+        window.isReleasedWhenClosed = false
+        window.title = sheet.name
+        window.contentMinSize = CGSize(width: 760, height: 560)
+        window.setFrameAutosaveName("SprytsDesk-" + sheet.id)
+        if let library = session.pipLibrary {
+            let controller = PipSplitController(session: session, library: library, shelf: shelf, team: team,
+                                                tint: Color(nsColor: NSColor(hex: sheet.look.body)))
+            window.contentViewController = controller
+            controller.installToolbar(in: window)
+        } else {
+            window.contentView = NSHostingView(rootView: ContentUnavailableView("Workspace unavailable", systemImage: "exclamationmark.triangle",
+                description: Text("Pip's conversation library couldn't be opened. Your saved conversations have not been removed.")))
+        }
     }
 
-    var isOpen: Bool { panel.isVisible }
-    var isKey: Bool { panel.isKeyWindow }
-    var number: Int { panel.windowNumber }
+    var isOpen: Bool { window.isVisible && !window.isMiniaturized }
+    var isKey: Bool { window.isKeyWindow }
+    var number: Int { window.windowNumber }
     var tethers: Bool { false }
 
     func show() {
-        if let screen = NSScreen.screens.first {
+        let placedBefore = UserDefaults.standard.string(forKey: "NSWindow Frame " + window.frameAutosaveName) != nil
+        if !window.isVisible, !placedBefore, let screen = NSScreen.main ?? NSScreen.screens.first {
             let area = screen.visibleFrame
-            panel.setFrameOrigin(NSPoint(x: area.midX - 480, y: area.midY - 305 + 30))
+            let width = min(DeskController.size.width, area.width - 40)
+            let height = min(DeskController.size.height, area.height - 80)
+            window.setFrame(NSRect(x: area.midX - width / 2, y: area.midY - height / 2,
+                                   width: width, height: height), display: true)
         }
         shelf.refreshActivity()
-        panel.makeKeyAndOrderFront(nil)
-        session.focusTick += 1
+        if window.isMiniaturized { window.deminiaturize(nil) }
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
     }
 
-    func close() {
-        panel.orderOut(nil)
-    }
+    func close() { window.performClose(nil) }
+
+    func windowShouldClose(_ sender: NSWindow) -> Bool { confirmPipSaved(session) }
+}
+
+@MainActor
+func confirmPipSaved(_ session: ChatSession) -> Bool {
+    // A library that never loaded cannot be overwritten. With no local composer to lose,
+    // closing is safe and allows the person to repair the original file and relaunch.
+    if session.pipLibrary?.needsRecovery == true && session.draft.isEmpty && session.attachments.isEmpty { return true }
+    guard session.pipLibrary != nil, !session.save() else { return true }
+    let alert = NSAlert()
+    alert.messageText = "Your conversation couldn’t be saved"
+    alert.informativeText = session.pipLibrary?.error ?? "Keep Spryts open and try saving again."
+    alert.alertStyle = .warning
+    alert.addButton(withTitle: "Keep Open")
+    alert.runModal()
+    return false
 }
 
 // MARK: - The writer's studio

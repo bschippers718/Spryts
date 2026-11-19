@@ -23,7 +23,8 @@ When you add a role (the `role` field in `Characters/<id>.json`), build all of t
 
 Only Pip (the generalist) has the apps, the desk and the Mac-control actions.
 
-Roles so far: `generalist` (Pip, desk), `coder` (Nova, IDE), `writer` (Ember, studio), `coach` (Rally, training room),
+Roles so far: `generalist` (Pip, the chief of staff: `ChiefOfStaff.swift`, his office files and the Today desk),
+`coder` (Nova, IDE: `Workspace.swift`, `Changes.swift`, `NovaTools.swift`), `writer` (Ember, studio), `coach` (Rally, training room),
 `forecaster` (Drizzle, the real weather and nothing else: `Weather.swift`, `Forecast.swift`).
 
 ## Home-made and shared Spryts
@@ -52,18 +53,44 @@ The screen belongs to the person's work. Every addition must leave it no busier 
 - **The stage:** fidgets slow down as more characters are on stage, and only one character-to-character exchange
   happens at a time, minutes apart. A new behaviour must fit inside those budgets, not add to them.
 
-## Two engines, one set of characters
+## Look like Apple shipped it
 
-Every character can run on Claude Code or on Grok (the `grok` command-line agent); the ✦ menu switches all of them.
-Nothing about a character may depend on which engine is behind it.
+Pip and Nova are fully native (`RoleTheme` with no `paper`); the others move over one at a time. The shared pieces live in `Design.swift`.
+
+- Liquid Glass only for chrome that floats: popups, the desk, toolbars, controls. Content (messages, cards, code, lists) sits on solid system surfaces (`Surface`, `solidCard`).
+- System fonts, SF Symbols and semantic colours, so light and dark mode both work. Never force a colour scheme on a native character.
+- A character's identity is its accent colour and what it shows, not a repainted window. Code uses Xcode's colours (`CodePalette`).
+
+## Per-character engines
+
+Every character can run on Claude Code or Grok (the `grok` command-line agent). Nova also supports Codex.
+Each character keeps its own engine and model; the ✦ menu changes only the default for new characters.
+A character's identity must not depend on which engine is behind it. Companions must remain tool-free.
 
 - Claude Code: `Harness.swift`. Approvals come through its `PermissionRequest` hook.
 - Grok: `GrokHarness.swift`. Grok has no hook that waits on a permission prompt, so it runs with `--always-approve`
   and a `PreToolUse` gate (`~/.grok/hooks/spryts.json`) asks the person instead. The gate ignores Grok sessions
   Spryts didn't start. If the gate can't be installed, or tools run without it firing, runs fall back to read-only.
   Never weaken that fallback.
-- Both emit the same stream format, so one parser in `Harness.runOnce` serves both. Grok's tool names are mapped
-  to the shared ones in `Harness.canonical`.
+- Claude Code and Grok emit the same stream format, so one parser in `Harness.runOnce` serves both. Grok's tool names
+  are mapped to the shared ones in `Harness.canonical`.
+- Codex: `CodexAgent.swift`, through the installed local app server. It uses the shared visible approval UI, a user reviewer,
+  and project-scoped sandboxing. Unknown server requests fail closed. Do not silently expand permissions or reuse another engine's session.
+- A missing engine, failed run, interrupted run, or empty result must never become a successful team report.
+
+## Durable work and editing
+
+- `PipLibrary.swift` owns the chief's projects and conversations; `ChatSession` performs save-before-switch transactions.
+  New Chat must preserve history and drafts. Project context is local to the active conversation. Never bypass a failed
+  save to switch chats, start work, close, quit, or restart. Migrations keep the original file, and interrupted tasks
+  must not automatically resume. Changes to project context invalidate the affected engine sessions.
+- Pip's connections distinguish installed apps, configured services, and verified connection status. Service checks
+  are explicit actions. Adding an HTTPS service writes only after Save, using structured process arguments; sign-in
+  and tool permissions remain with the selected engine. Never log service endpoints, credentials, or raw CLI output.
+- `TeamCoordination.swift` owns persisted handoffs and results. Save before consuming inbox requests. Never automatically
+  replay interrupted work or recursively delegate from a delegated task. Keep reports visible without inferring success.
+- `WorkspaceModel` owns per-file in-memory drafts. File navigation and agent events must not discard dirty buffers.
+  Save must detect disk conflicts; close and quit must ask about unsaved drafts. Do not claim crash recovery until drafts persist.
 
 ## Working here
 
