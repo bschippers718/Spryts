@@ -87,6 +87,12 @@ A character's identity must not depend on which engine is behind it. Companions 
 - Pip's connections distinguish installed apps, configured services, and verified connection status. Service checks
   are explicit actions. Adding an HTTPS service writes only after Save, using structured process arguments; sign-in
   and tool permissions remain with the selected engine. Never log service endpoints, credentials, or raw CLI output.
+- The X Feed (`PipSift.swift`, `PipSiftView.swift`) is X's own site in a web view with Sift running in the page. The three
+  files in `Sift/` are the Chrome extension, unchanged: update Sift by replacing them, never by editing them here or
+  re-implementing a filter in Swift. They run in their own content world with only the storage shim in `SiftEngine`.
+  The view stays on x.com; other links open in the person's browser. The app never calls X's API from here, never reads
+  the password, and never posts, likes or follows. Posts leave the page only when the person presses Brief, at most 20,
+  marked as untrusted content. Everything the page sends is checked in `SiftSettings.merge` before it is kept.
 - `TeamCoordination.swift` owns persisted handoffs and results. Save before consuming inbox requests. Never automatically
   replay interrupted work or recursively delegate from a delegated task. Keep reports visible without inferring success.
 - `WorkspaceModel` owns per-file in-memory drafts. File navigation and agent events must not discard dirty buffers.

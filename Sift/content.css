@@ -1,0 +1,977 @@
+.sift-hidden-post {
+  display: none !important;
+}
+
+.sift-placeholder {
+  align-items: center;
+  background: rgb(239 243 244 / 35%);
+  border-bottom: 1px solid rgb(239 243 244 / 55%);
+  box-sizing: border-box;
+  color: rgb(83 100 113);
+  display: flex;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 13px;
+  gap: 12px;
+  justify-content: space-between;
+  max-height: 48px;
+  min-height: 44px;
+  overflow: hidden;
+  padding: 8px 16px;
+}
+
+.sift-placeholder-reason {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sift-placeholder button {
+  appearance: none;
+  background: transparent;
+  border: 1px solid currentColor;
+  border-radius: 9999px;
+  color: inherit;
+  cursor: pointer;
+  flex: 0 0 auto;
+  font: inherit;
+  font-weight: 650;
+  padding: 4px 10px;
+}
+
+.sift-placeholder button:hover,
+.sift-placeholder button:focus-visible {
+  background: rgb(29 155 240 / 10%);
+  color: rgb(29 155 240);
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+
+.sift-post-preferences {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  gap: 5px;
+  margin-left: auto;
+}
+
+.sift-preference-label {
+  color: rgb(29 155 240);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.sift-topic-tag {
+  background: rgb(29 155 240 / 10%);
+  border-radius: 999px;
+  color: rgb(29 120 190);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 0.02em;
+  max-width: 96px;
+  overflow: hidden;
+  padding: 3px 7px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sift-topic-tag[hidden] {
+  display: none;
+}
+
+.sift-preference-action {
+  align-items: center;
+  appearance: none;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  color: #536471;
+  cursor: pointer;
+  display: inline-flex;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 11px;
+  font-weight: 750;
+  gap: 4px;
+  padding: 5px 8px;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.sift-auto-flag {
+  background: rgb(244 33 46 / 8%);
+  color: rgb(185 20 31);
+}
+
+.sift-auto-flag::before {
+  content: "−";
+  font-size: 17px;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.sift-show-more {
+  background: rgb(0 186 124 / 8%);
+  color: rgb(0 135 90);
+}
+
+.sift-show-more::before {
+  content: "+";
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.sift-auto-flag:hover,
+.sift-auto-flag:focus-visible {
+  background: rgb(244 33 46 / 10%);
+  color: rgb(244 33 46);
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+
+.sift-show-more:hover,
+.sift-show-more:focus-visible {
+  background: rgb(0 186 124 / 10%);
+  color: rgb(0 150 100);
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+
+.sift-preference-action.is-selected {
+  box-shadow: inset 0 0 0 1px currentColor;
+}
+
+.sift-preference-action.is-selected::before {
+  content: none;
+}
+
+.sift-auto-flag.is-selected {
+  background: rgb(244 33 46);
+  color: #fff;
+}
+
+.sift-show-more.is-selected {
+  background: rgb(0 150 100);
+  color: #fff;
+}
+
+.sift-preference-action:disabled {
+  cursor: default;
+  opacity: 0.65;
+}
+
+html.sift-distraction-free [data-testid="sidebarColumn"] > :not(.sift-rail),
+html.sift-distraction-free [data-testid="AppTabBar_Explore_Link"],
+html.sift-distraction-free a[href="/i/grok"],
+html.sift-distraction-free a[href="/i/premium_sign_up"],
+html.sift-distraction-free a[href="/i/verified-orgs-signup"],
+html.sift-distraction-free a[href="/i/videos"],
+html.sift-distraction-free a[href="/jobs"],
+html.sift-distraction-free article[data-testid="tweet"] [aria-label="Grok actions"],
+html.sift-distraction-free article[data-testid="tweet"] a[href*="grok.com"] {
+  display: none !important;
+}
+
+html.sift-distraction-free [data-testid="sidebarColumn"] {
+  align-self: flex-start;
+}
+
+.sift-feed-shortcut,
+.sift-settings-shortcut {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 9999px;
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 20px;
+  font-weight: 700;
+  gap: 18px;
+  margin-top: 4px;
+  max-width: 230px;
+  padding: 12px;
+  text-decoration: none;
+  transition: background-color 150ms ease;
+}
+
+.sift-feed-shortcut:hover,
+.sift-feed-shortcut:focus-visible,
+.sift-settings-shortcut:hover,
+.sift-settings-shortcut:focus-visible {
+  background: rgb(29 155 240 / 12%);
+  outline: 2px solid rgb(29 155 240);
+  outline-offset: 2px;
+}
+
+.sift-feed-icon,
+.sift-settings-icon {
+  color: rgb(29 155 240);
+  display: grid;
+  flex: 0 0 26px;
+  font-size: 25px;
+  height: 26px;
+  line-height: 1;
+  place-items: center;
+  width: 26px;
+}
+
+.sift-settings-icon {
+  font-size: 21px;
+}
+
+.sift-feed-label,
+.sift-settings-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 1264px) {
+  .sift-feed-label,
+  .sift-settings-label {
+    display: none;
+  }
+}
+
+.sift-placeholder-stack {
+  background: rgb(29 155 240 / 8%);
+  border-bottom-color: rgb(29 155 240 / 22%);
+  color: rgb(29 65 95);
+  font-weight: 650;
+}
+
+.sift-placeholder-stack-member {
+  display: none !important;
+}
+
+.sift-status-bar {
+  align-items: center;
+  background: #fff;
+  border-bottom: 1px solid #eff3f4;
+  box-sizing: border-box;
+  color: #0f1419;
+  display: flex;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  gap: 16px;
+  justify-content: space-between;
+  padding: 12px 16px;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.sift-status-bar > div:first-child {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.sift-status-bar strong {
+  font-size: 15px;
+}
+
+.sift-status-bar span {
+  color: #536471;
+  font-size: 12px;
+}
+
+.sift-status-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+}
+
+.sift-status-bar button,
+.sift-empty-state button {
+  appearance: none;
+  background: transparent;
+  border: 1px solid #cfd9de;
+  border-radius: 999px;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 7px 11px;
+}
+
+.sift-status-primary,
+.sift-empty-state .sift-status-primary {
+  background: rgb(29 155 240);
+  border-color: rgb(29 155 240);
+  color: #fff;
+}
+
+.sift-empty-state {
+  background: #f7f9f9;
+  border-bottom: 1px solid #eff3f4;
+  color: #0f1419;
+  display: grid;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  gap: 10px;
+  padding: 22px 16px;
+}
+
+.sift-empty-state strong {
+  font-size: 17px;
+}
+
+.sift-empty-state p {
+  color: #536471;
+  font-size: 14px;
+  line-height: 1.45;
+  margin: 0;
+  max-width: 42rem;
+}
+
+.sift-empty-state > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sift-review-backdrop {
+  background: rgb(15 20 25 / 24%);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  inset: 0;
+  position: fixed;
+  z-index: 2147483646;
+}
+
+.sift-brief-backdrop {
+  background: rgb(15 20 25 / 24%);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  inset: 0;
+  position: fixed;
+  z-index: 2147483646;
+}
+
+.sift-brief-drawer {
+  background: #fff;
+  box-shadow: -12px 0 36px rgb(15 20 25 / 18%);
+  color: #17202a;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  margin-left: auto;
+  max-width: min(520px, 94vw);
+  width: 100%;
+}
+
+.sift-brief-drawer > header {
+  align-items: flex-start;
+  border-bottom: 1px solid #e1e7eb;
+  display: flex;
+  gap: 20px;
+  justify-content: space-between;
+  padding: 22px 20px 18px;
+}
+
+.sift-brief-drawer h2 {
+  font-size: 22px;
+  letter-spacing: -0.02em;
+  margin: 0 0 5px;
+}
+
+.sift-brief-drawer header p,
+.sift-brief-empty p {
+  color: #536471;
+  font-size: 12px;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.sift-brief-drawer button {
+  background: transparent;
+  border: 1px solid #aeb9c1;
+  border-radius: 999px;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 7px 11px;
+}
+
+.sift-brief-drawer button:focus-visible,
+.sift-brief-drawer a:focus-visible {
+  outline: 3px solid rgb(29 155 240);
+  outline-offset: 2px;
+}
+
+.sift-brief-list {
+  display: grid;
+  gap: 12px;
+  overflow: auto;
+  padding: 16px 20px 24px;
+}
+
+.sift-brief-item,
+.sift-brief-empty {
+  border: 1px solid #e1e7eb;
+  border-radius: 16px;
+  display: grid;
+  gap: 9px;
+  padding: 16px;
+}
+
+.sift-brief-meta {
+  align-items: center;
+  color: rgb(29 155 240);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 11px;
+  font-weight: 750;
+  gap: 6px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.sift-ai-badge {
+  background: rgb(120 86 255 / 12%);
+  border-radius: 999px;
+  color: rgb(98 62 232);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  padding: 2px 7px;
+}
+
+.sift-brief-summary {
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 1.42;
+  margin: 0;
+}
+
+.sift-brief-lead {
+  color: #536471;
+  font-size: 12px;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.sift-brief-lead[hidden] {
+  display: none;
+}
+
+.sift-ai-status {
+  border-bottom: 1px solid #e1e7eb;
+  color: #536471;
+  display: grid;
+  font-size: 12px;
+  gap: 8px;
+  line-height: 1.45;
+  padding: 12px 20px;
+}
+
+.sift-ai-status[hidden] {
+  display: none;
+}
+
+.sift-ai-status p {
+  margin: 0;
+}
+
+.sift-ai-status[data-sift-tone="on"] {
+  color: rgb(98 62 232);
+}
+
+.sift-ai-status progress {
+  accent-color: rgb(98 62 232);
+  height: 6px;
+  width: 100%;
+}
+
+.sift-ai-enable {
+  background: rgb(98 62 232) !important;
+  border-color: rgb(98 62 232) !important;
+  color: #fff !important;
+  justify-self: start;
+}
+
+.sift-ai-enable:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+/* Right rail: replaces X's trends column when distraction-free is on. */
+
+.sift-rail {
+  background: #fff;
+  border: 1px solid #e1e7eb;
+  border-radius: 18px;
+  box-sizing: border-box;
+  color: #17202a;
+  display: flex;
+  flex-direction: column;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  margin: 12px 0 0;
+  max-height: calc(100vh - 24px);
+  overflow: hidden;
+  position: sticky;
+  top: 12px;
+  width: 100%;
+}
+
+.sift-rail > header {
+  border-bottom: 1px solid #e1e7eb;
+  padding: 16px 18px 12px;
+}
+
+.sift-rail h2 {
+  font-size: 18px;
+  letter-spacing: -0.02em;
+  margin: 0 0 3px;
+}
+
+.sift-rail-scope,
+.sift-rail-stats {
+  color: #536471;
+  font-size: 12px;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.sift-rail-stats {
+  white-space: pre-line;
+}
+
+.sift-rail .sift-ai-status {
+  padding: 10px 18px;
+}
+
+.sift-rail-list {
+  gap: 10px;
+  overflow: auto;
+  padding: 12px 14px 14px;
+}
+
+.sift-rail .sift-brief-item {
+  border-radius: 14px;
+  gap: 7px;
+  padding: 13px;
+}
+
+.sift-rail .sift-brief-summary {
+  font-size: 14px;
+}
+
+.sift-rail > footer {
+  align-items: center;
+  border-top: 1px solid #e1e7eb;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  margin-top: auto;
+  padding: 10px 18px 12px;
+}
+
+.sift-rail-settings,
+.sift-ai-enable {
+  appearance: none;
+  background: transparent;
+  border: 1px solid #cfd9de;
+  border-radius: 999px;
+  color: inherit;
+  cursor: pointer;
+  flex: 0 0 auto;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 6px 11px;
+}
+
+.sift-rail button:focus-visible,
+.sift-rail a:focus-visible {
+  outline: 3px solid rgb(29 155 240);
+  outline-offset: 2px;
+}
+
+/* Undo toast */
+
+.sift-toast {
+  align-items: center;
+  background: #0f1419;
+  border-radius: 14px;
+  bottom: 24px;
+  box-shadow: 0 12px 32px rgb(15 20 25 / 28%);
+  box-sizing: border-box;
+  color: #fff;
+  display: flex;
+  flex-wrap: wrap;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 14px;
+  gap: 10px 14px;
+  left: 50%;
+  max-width: min(560px, calc(100vw - 32px));
+  padding: 12px 14px 12px 18px;
+  position: fixed;
+  transform: translateX(-50%);
+  z-index: 2147483645;
+}
+
+.sift-toast-message {
+  flex: 1 1 200px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.sift-toast-actions {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.sift-toast-action,
+.sift-toast-dismiss,
+.sift-toast-chip {
+  appearance: none;
+  background: transparent;
+  border: 1px solid rgb(255 255 255 / 35%);
+  border-radius: 999px;
+  color: #fff;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 6px 12px;
+}
+
+.sift-toast-action.is-primary {
+  background: #fff;
+  border-color: #fff;
+  color: #0f1419;
+}
+
+.sift-toast-dismiss {
+  border-color: transparent;
+  font-size: 18px;
+  line-height: 1;
+  padding: 4px 8px;
+}
+
+.sift-toast-chips {
+  display: flex;
+  flex: 1 1 100%;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.sift-toast-chip {
+  background: rgb(255 255 255 / 10%);
+}
+
+.sift-toast-action:hover,
+.sift-toast-chip:hover,
+.sift-toast-dismiss:hover {
+  background: rgb(255 255 255 / 20%);
+}
+
+.sift-toast-action.is-primary:hover {
+  background: #e7e9ea;
+}
+
+.sift-toast button:focus-visible {
+  outline: 3px solid rgb(29 155 240);
+  outline-offset: 2px;
+}
+
+/* Self-diagnostic banner */
+
+.sift-diagnostic {
+  align-items: center;
+  background: #fff4e5;
+  border-bottom: 1px solid #f5c98a;
+  color: #4a2f00;
+  display: flex;
+  flex-wrap: wrap;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  gap: 12px 20px;
+  justify-content: space-between;
+  padding: 14px 16px;
+}
+
+.sift-diagnostic strong {
+  display: block;
+  font-size: 15px;
+  margin-bottom: 3px;
+}
+
+.sift-diagnostic p {
+  font-size: 13px;
+  line-height: 1.45;
+  margin: 0;
+  max-width: 48rem;
+}
+
+.sift-diagnostic-actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sift-diagnostic button {
+  appearance: none;
+  background: transparent;
+  border: 1px solid #c98a2a;
+  border-radius: 999px;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 7px 11px;
+}
+
+.sift-diagnostic .sift-status-primary {
+  background: #b9651c;
+  border-color: #b9651c;
+  color: #fff;
+}
+
+.sift-brief-sources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.sift-brief-sources a {
+  border: 1px solid #cfd9de;
+  border-radius: 999px;
+  color: #536471;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 5px 9px;
+  text-decoration: none;
+}
+
+.sift-brief-sources a:hover {
+  border-color: rgb(29 155 240);
+  color: rgb(29 155 240);
+}
+
+.sift-brief-drawer > footer {
+  border-top: 1px solid #e1e7eb;
+  color: #536471;
+  font-size: 11px;
+  margin-top: auto;
+  padding: 14px 20px 18px;
+}
+
+.sift-review-drawer {
+  background: #fff;
+  box-shadow: -12px 0 36px rgb(15 20 25 / 18%);
+  color: #17202a;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  margin-left: auto;
+  max-width: min(460px, 92vw);
+  width: 100%;
+}
+
+.sift-review-drawer > header {
+  align-items: flex-start;
+  border-bottom: 1px solid #e1e7eb;
+  display: flex;
+  gap: 20px;
+  justify-content: space-between;
+  padding: 22px 20px 18px;
+}
+
+.sift-review-drawer h2 {
+  font-size: 20px;
+  letter-spacing: -0.02em;
+  margin: 0 0 5px;
+}
+
+.sift-review-drawer header p,
+.sift-review-item p {
+  color: #536471;
+  font-size: 12px;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.sift-review-drawer button {
+  background: transparent;
+  border: 1px solid #aeb9c1;
+  border-radius: 999px;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 7px 11px;
+}
+
+.sift-review-drawer button:focus-visible {
+  outline: 3px solid rgb(29 155 240);
+  outline-offset: 2px;
+}
+
+.sift-review-close {
+  flex: 0 0 auto;
+}
+
+.sift-review-list {
+  display: grid;
+  gap: 12px;
+  overflow: auto;
+  padding: 16px 20px 24px;
+}
+
+.sift-review-item {
+  border: 1px solid #e1e7eb;
+  border-radius: 16px;
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+}
+
+.sift-review-item span {
+  color: #536471;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.sift-review-drawer > footer {
+  border-top: 1px solid #e1e7eb;
+  margin-top: auto;
+  padding: 14px 20px 18px;
+}
+
+.sift-review-drawer > footer button {
+  background: rgb(29 155 240);
+  border-color: rgb(29 155 240);
+  color: #fff;
+  width: 100%;
+}
+
+/* Dark palette follows X's own theme (Dim / Lights out), detected from the
+   page background, rather than the OS preference. */
+
+html.sift-dark {
+  --sift-surface: #000;
+}
+
+html.sift-dark .sift-placeholder {
+  background: rgb(255 255 255 / 4%);
+  border-bottom-color: rgb(255 255 255 / 8%);
+  color: #aab4bc;
+}
+
+html.sift-dark .sift-preference-action {
+  border-color: currentColor;
+}
+
+html.sift-dark .sift-preference-label {
+  color: #55acee;
+}
+
+html.sift-dark .sift-topic-tag {
+  background: rgb(29 155 240 / 18%);
+  color: #8ecdf7;
+}
+
+html.sift-dark .sift-auto-flag {
+  background: rgb(244 33 46 / 14%);
+  color: #ff8b94;
+}
+
+html.sift-dark .sift-show-more {
+  background: rgb(0 186 124 / 14%);
+  color: #55d6a5;
+}
+
+html.sift-dark .sift-placeholder-stack {
+  background: rgb(29 155 240 / 12%);
+  color: #e7e9ea;
+}
+
+html.sift-dark .sift-status-bar,
+html.sift-dark .sift-empty-state,
+html.sift-dark .sift-review-drawer,
+html.sift-dark .sift-brief-drawer,
+html.sift-dark .sift-rail {
+  background: var(--sift-surface, #000);
+  color: #e7e9ea;
+}
+
+html.sift-dark .sift-status-bar,
+html.sift-dark .sift-empty-state {
+  border-bottom-color: #30363a;
+}
+
+html.sift-dark .sift-status-bar span,
+html.sift-dark .sift-empty-state p,
+html.sift-dark .sift-review-drawer header p,
+html.sift-dark .sift-review-item p,
+html.sift-dark .sift-review-item span,
+html.sift-dark .sift-brief-drawer header p,
+html.sift-dark .sift-brief-empty p,
+html.sift-dark .sift-brief-drawer > footer,
+html.sift-dark .sift-brief-lead,
+html.sift-dark .sift-rail-scope,
+html.sift-dark .sift-rail-stats,
+html.sift-dark .sift-ai-status {
+  color: #aab4bc;
+}
+
+html.sift-dark .sift-ai-status[data-sift-tone="on"],
+html.sift-dark .sift-ai-badge {
+  color: #b9a6ff;
+}
+
+html.sift-dark .sift-ai-badge {
+  background: rgb(150 120 255 / 20%);
+}
+
+html.sift-dark .sift-status-bar button,
+html.sift-dark .sift-empty-state button,
+html.sift-dark .sift-review-drawer button,
+html.sift-dark .sift-brief-drawer button,
+html.sift-dark .sift-rail-settings,
+html.sift-dark .sift-brief-sources a {
+  border-color: #3d4449;
+}
+
+html.sift-dark .sift-review-drawer > header,
+html.sift-dark .sift-review-drawer > footer,
+html.sift-dark .sift-brief-drawer > header,
+html.sift-dark .sift-brief-drawer > footer,
+html.sift-dark .sift-rail > header,
+html.sift-dark .sift-rail > footer,
+html.sift-dark .sift-ai-status {
+  border-color: #30363a;
+}
+
+html.sift-dark .sift-rail {
+  border-color: #30363a;
+}
+
+html.sift-dark .sift-review-item,
+html.sift-dark .sift-brief-item,
+html.sift-dark .sift-brief-empty {
+  border-color: #2f3336;
+}
+
+html.sift-dark .sift-toast {
+  border: 1px solid rgb(255 255 255 / 16%);
+}
+
+html.sift-dark .sift-diagnostic {
+  background: #2a1f0a;
+  border-bottom-color: #6b4a14;
+  color: #ffd9a0;
+}
+
+html.sift-dark .sift-diagnostic button {
+  border-color: #8a6320;
+}

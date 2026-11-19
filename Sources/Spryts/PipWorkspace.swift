@@ -4,7 +4,7 @@ import SwiftUI
 
 enum PipDestination: Hashable {
     case conversation(String), project(String)
-    case scenes, today, chats, projects, connections, team, archive
+    case scenes, today, feed, chats, projects, connections, team, archive
 }
 
 enum PipSheet: Identifiable {
@@ -49,6 +49,7 @@ final class PipNavigation: ObservableObject {
         case .conversation(let id): return session.pipLibrary?.conversations.first { $0.id == id }?.title ?? "New Chat"
         case .project(let id): return session.pipLibrary?.projects.first { $0.id == id }?.name ?? "Project"
         case .today: return "Today"
+        case .feed: return "X Feed"
         case .scenes: return "Scenes"
         case .chats: return "All Chats"
         case .projects: return "Projects"
@@ -134,6 +135,7 @@ struct PipSidebarView: View {
                     Section {
                         sidebarItem("Scenes", icon: "square.stack.3d.up", destination: .scenes)
                         sidebarItem("Today", icon: "sun.max", destination: .today)
+                        sidebarItem("X Feed", icon: "line.3.horizontal.decrease.circle", destination: .feed)
                         sidebarItem("All Chats", icon: "bubble.left.and.bubble.right", destination: .chats)
                         sidebarItem("Projects", icon: "folder", destination: .projects)
                         sidebarItem("Connections", icon: "app.connected.to.app.below.fill", destination: .connections)
@@ -375,6 +377,11 @@ struct PipDetailView: View {
                     TodayView(session: session, office: Office.of(session.sheet.id), name: session.sheet.name, tint: tint)
                     DeskTeamPreview(sessions: team, chiefID: session.sheet.id) { navigation.destination = .team }
                 }.padding(28).frame(maxWidth: 1000, alignment: .leading).frame(maxWidth: .infinity, alignment: .top)
+            }
+        case .feed:
+            PipSiftView(session: session, tint: tint) {
+                navigation.focusConversation()
+                session.focusTick += 1
             }
         case .projects:
             projectsView

@@ -136,6 +136,22 @@ show Draft ready, Working, Response ready, Needs attention, or Interrupted. Thes
 Response ready does not certify that every proposed real-world action happened. Scenes are reusable requests, not yet a
 scheduled workflow engine with dependency tracking or structured artifact verification.
 
+## X Feed (Sift, built in)
+
+Pip's workspace has an **X Feed** pane: X's own site, shown inside Spryts, with [Sift](https://benschippers.com) running
+in the page. Sign in to X once in the pane (username and password; Google and Apple sign-in buttons don't work inside
+an app) and it stays signed in. No API key, no credits.
+
+- **Filters** is Sift's settings as a Mac form: a List to read from, starter packs and topics, blocked phrases,
+  promoted posts, reposts, quotes, accounts to always or never show, a cap per account, and the focus layout.
+  Changes apply as you type. Sift's own controls in the page (never show, block a phrase, review what was filtered) write to the same settings.
+- **Brief** sends the latest posts Sift kept, twenty at most, to Pip's engine and opens the answer beside the feed.
+  Nothing is sent until you press it. Pip can't post, like or follow from here.
+- Links that leave X open in your browser. **⋯ → Sign Out of X** forgets the sign-in kept by Spryts only.
+
+The filtering is the extension itself: `Sift/shared.js`, `content.js` and `content.css` are copied from Sift 1.0.1
+unchanged. To update, replace those three files. Settings are kept per chief in Application Support.
+
 ## X and social connections
 
 Connections includes a native **X Workspace**. It supports OAuth 2.0 public-client PKCE sign-in, account verification,
