@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SceneKit
 
 enum Mode {
@@ -137,6 +138,9 @@ final class SprytCharacter {
     private var nextBig = CGFloat.random(in: 180...420)  // set pieces: a few times an hour
     private var bigHistory: [Int] = []
     private var lastMove = ""
+    /// What it has heard of the message being typed to it. See Listening.swift.
+    private var ear = Ear()
+    private var hearing: AnyCancellable?
     private var lapsLeft = 0
     private var lapHome: CGFloat = 0
     private var backward = false
@@ -239,6 +243,68 @@ final class SprytCharacter {
         node.addChildNode(emote)
 
         session.onEvent = { [weak self] event in self?.handle(event) }
+        // Every change to the message being typed reaches the body. The words stay on this Mac.
+        hearing = session.$draft.sink { [weak self] draft in self?.heard(draft) }
+    }
+
+    /// The draft changed: a key was pressed, text was pasted, or the box was emptied.
+    private func heard(_ draft: String) {
+        let wasEmpty = ear.length == 0
+        ear.heard(draft, name: sheet.name)
+        if wasEmpty && !draft.isEmpty {
+            sinceInteraction = 0
+            wake()
+        }
+    }
+
+    /// Whether the body is listening right now rather than doing something of its own.
+    private var listening: Bool {
+        mode == .idle && ear.level > 0.02 && gestureTime <= 0 && (activity == .none || activity == .waiting)
+            && !petting && pokeTime <= 0 && sulk <= 0
+    }
+
+    /// A message was just sent: answer it with the body at once, while the words are still on their way.
+    private func respond(to said: String) {
+        if mode == .napping || mode == .sitting { wake() }
+        guard mode == .idle else { return }
+        switch Listening.response(to: Listening.read(said, name: sheet.name)) {
+        case .nothing:
+            break
+        case .move(let move):
+            showEmote("!")
+            perform(move)
+        case .gesture(let name, let symbol):
+            gesture = name
+            gestureTime = Moves.info(name) != nil ? Moves.seconds(name) : 1.9
+            if let symbol { showEmote(symbol) }
+        case .hop(let symbol):
+            hop(height: body.height * 0.5, withFlip: false)
+            if let symbol { showEmote(symbol) }
+        }
+    }
+
+    /// Does one move from the catalogue because it was asked to.
+    private func perform(_ move: String) {
+        let H = body.height
+        let flips = !(sheet.quirks ?? []).contains("noflips")
+        switch move {
+        case "jump":
+            hop(height: H * 0.5, withFlip: false)
+        case "flip":
+            hop(height: H * 0.95, withFlip: flips)
+        case "spin":
+            spinLeft = 6 * CGFloat.pi
+            dizzyAfterSpin = true
+        case "twirl":
+            spinLeft = 2 * CGFloat.pi
+            dizzyAfterSpin = false
+        case "dance", "moonwalk", "lap":
+            startDance(seconds: 3.2)
+        default:
+            guard Moves.info(move) != nil else { return }
+            gesture = move
+            gestureTime = Moves.seconds(move)
+        }
     }
 
     var hitRect: CGRect {
@@ -476,6 +542,7 @@ return CGRect(x: pos.x - H * 0.45, y: pos.y + altitude - 4, width: H * 0.9, heig
         case .thinking:
             setActivity(.thinking)
             showEmote("…")
+            if let said = ear.takeSent() { respond(to: said) }
         case .streaming:
             setActivity(.talking)
         case .tool(let kind):
@@ -972,6 +1039,7 @@ return CGRect(x: pos.x - H * 0.45, y: pos.y + altitude - 4, width: H * 0.9, heig
         modeTime += dt
         activityTime += dt
         sinceInteraction += dt
+        ear.tick(dt, attending: panelOpen)
         startleCooldown -= dt
         if attention { sinceInteraction = 0 }
         if gestureTime > 0 {
@@ -1100,7 +1168,7 @@ return CGRect(x: pos.x - H * 0.45, y: pos.y + altitude - 4, width: H * 0.9, heig
 
         switch mode {
         case .idle:
-            let stayPut = playing || attention || quiet || gestureTime > 0 || petting || sulk > 0 || pokeTime > 0 || hobbyTime > 0
+            let stayPut = playing || attention || quiet || ear.level > 0.15 || gestureTime > 0 || petting || sulk > 0 || pokeTime > 0 || hobbyTime > 0
                 || activity == .talking || activity == .tool || activity == .error || activity == .waiting
                 || activity == .asking
                 || (activity == .thinking && panelOpen)
@@ -2734,6 +2802,24 @@ return CGRect(x: pos.x - H * 0.45, y: pos.y + altitude - 4, width: H * 0.9, heig
         }
 
         // One-shot gestures chosen by the bot's reply or by a neighbour.
+        // Listening: the body answers what is being typed to it.
+        let cue = listening ? Listening.cue(for: ear, at: t, energy: personality.talkingEnergy) : nil
+        if let cue {
+            p.yaw += (0.12 * facing - p.yaw) * cue.attention
+            p.lean += cue.lean
+            p.tilt += cue.sway
+            p.headTilt += cue.headTilt
+            p.headPitch += cue.headPitch
+            p.bodyY += cue.bounce
+            p.squash *= cue.squash
+            p.armOutL += cue.armsOut
+            p.armOutR += cue.armsOut + 1.7 * cue.handUp
+            p.armL += cue.armsForward
+            p.armR += cue.armsForward
+            p.elbowL += cue.elbows
+            p.elbowR += cue.elbows + 0.5 * cue.handUp
+            p.eyeOpen = cue.eyeOpen
+        }
         if gestureTime > 0 && (mode == .idle || mode == .landing) {
             switch gesture {
             case "wave":
@@ -3046,6 +3132,17 @@ return CGRect(x: pos.x - H * 0.45, y: pos.y + altitude - 4, width: H * 0.9, heig
             lift = 0.6
             smile = 0.4
         }
+        if let cue {
+            // The face it listens with replaces the resting one in step with its attention.
+            let a = cue.attention
+            smile += (cue.smile - smile) * a
+            mouth = max(mouth * (1 - a), cue.mouth)
+            brow += (cue.brow - brow) * a
+            lift = max(lift, cue.browLift)
+            cock = max(cock, cue.browCock)
+            blush = max(blush, cue.blush)
+            glow = max(glow, 0.5 * a)
+        }
         if smokeTime > 0 { brow = max(brow, 0.7) }
         if flashTime > 0 { glow = 1.5 }
         // Signatures: ears go flat when startled; stalks flicker in turn while working something out.
@@ -3073,7 +3170,11 @@ return CGRect(x: pos.x - H * 0.45, y: pos.y + altitude - 4, width: H * 0.9, heig
         }
 
         // Eyes lead the head, and stay on the prop during a specialist's quiet hobby.
-        if followsCursor {
+        if let cue, cue.attention > 0.3 {
+            // Reading along as you type.
+            p.lookX = cue.lookX
+            p.lookY = cue.lookY
+        } else if followsCursor {
             p.lookX = clamp(dx / 260, -1, 1) * cos(p.yaw)
             p.lookY = clamp(dy / 260, -1, 1)
         } else if mode == .idle && acting == .tool {

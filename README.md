@@ -136,6 +136,21 @@ show Draft ready, Working, Response ready, Needs attention, or Interrupted. Thes
 Response ready does not certify that every proposed real-world action happened. Scenes are reusable requests, not yet a
 scheduled workflow engine with dependency tracking or structured artifact verification.
 
+## They listen while you type
+
+A Spryt reads what you are typing to it and answers with its body, before any reply arrives.
+
+- **While you type:** it turns to you, leans in, nods at the speed of your typing and follows the line with its eyes.
+  A question tilts its head. Good news makes it bounce, bad news takes the smile off its face, thanks makes it blush,
+  "hello" starts a wave, capitals rock it back, a paste startles it, deleting makes it wonder, and a pause makes it wait.
+- **When you press Return:** it responds at once. "Do a flip", "dance", "can you jump" and the rest of the move
+  catalogue are performed on request; a greeting gets a wave, thanks a bow, big news a jump, bad news a quiet nod.
+  Sentences about work ("jump to the next section", "spin up a server") are left alone.
+- A lively character shows more of this than a quiet one, and a made Spryt uses the "Talks with its hands" setting.
+  Try it in the maker: **Voice → Try it**.
+
+The reading happens on the Mac in `Listening.swift`; the words are not sent anywhere or logged.
+
 ## Make your own Spryt
 
 **✦ → Make a Spryt** opens the maker: a live stage on the left, four tabs on the right. Whatever you change, the
@@ -254,6 +269,7 @@ These checks use temporary storage and fake agent processes; they do not run mod
 - `bash tools/check-harness.command` — subprocess completion, diagnostic isolation, and cancellation.
 - `bash tools/check-scenes.command` — starter scope, custom Scene persistence, request building, and recovery.
 - `bash tools/check-x-connection.command` — PKCE, strict callbacks, token storage, API responses, and cancellation using fixtures.
+- `bash tools/check-listening.command` — how a Spryt reads typed text and what its body does: feelings, questions, move requests and false alarms, typing rhythm, and the limits on every cue. Writes `listening-check.log`.
 - `bash tools/check-sift.command` — the X Feed: settings validation, List addresses, storage, Sift's own files in a real web view on a stand-in page, and the brief sent to Pip. Writes `sift-check.log`.
 - `bash tools/check-build.command` — compiles the app without installing or restarting it.
 - `bash tools/check-x-evidence.command` — bounded social evidence, source provenance, escaping, and excerpt labels.

@@ -46,6 +46,18 @@ Anyone can make a Spryt in the maker (`SprytMaker.swift`, ✦ menu) and share it
 - The maker is native: system surfaces, grouped forms, the system accent. Four tabs and one stage; a new control
   goes in the tab it belongs to, not in a fifth place.
 
+## Listening
+
+`Listening.swift` turns the message being typed into body language: `Listening.read` (what the words feel like and
+whether a move was asked for), `Ear` (typing rhythm), `Listening.cue` (the pose offsets and face) and
+`Listening.response` (what happens on Return). `SprytCharacter` and the maker's preview both call it.
+
+- It is pure and local. Never send a draft to an engine, a server or a log to decide a reaction.
+- Only the Spryt being typed to reacts, and only while it is standing idle. Listening never interrupts work in progress.
+- Bad news gets stillness and a nod, never a performance. A move is performed only when the sentence really asks for
+  one; when in doubt, do nothing. Add the sentence to `tools/check_listening.swift` and run `tools/check-listening.command`.
+- New reactions go in `Listening.cue` as bounded offsets, scaled by the character's `talkingEnergy`.
+
 ## Keep it calm
 
 The screen belongs to the person's work. Every addition must leave it no busier than before.

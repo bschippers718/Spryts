@@ -517,6 +517,9 @@ final class MakerStage: ObservableObject {
     private var moveClock: CGFloat = 0
 
     var motion = MakerModel.defaultMotion
+    /// How much its body joins in when it is spoken to.
+    var energy: CGFloat = 0.8
+    private var ear = Ear()
     /// What it does between moves: stand, walk, skip, run or sneak.
     @Published var loop = "walk"
     /// The move being shown right now, if any.
@@ -575,6 +578,22 @@ final class MakerStage: ObservableObject {
         playing = move
     }
 
+    /// Something is being typed to it: it listens exactly as it will on the screen.
+    func hear(_ text: String, name: String) {
+        ear.heard(text, name: name)
+    }
+
+    /// The message was sent: it answers with its body.
+    func answer(_ text: String, name: String) {
+        ear.heard("", name: name)
+        switch Listening.response(to: Listening.read(text, name: name)) {
+        case .nothing: break
+        case .move(let move): play(move)
+        case .gesture(let gesture, _): play(gesture)
+        case .hop: play("jump")
+        }
+    }
+
     func start() {
         if timer != nil { return }
         let t = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in self?.tick() }
@@ -598,6 +617,7 @@ final class MakerStage: ObservableObject {
         var spin: CGFloat = 0
         var moving = false
 
+        ear.tick(dt, attending: true)
         if let move = playing {
             moveClock += dt
             let frame = Moves.frame(move, at: moveClock, m: m, H: height, L: body.legLength)
@@ -606,6 +626,31 @@ final class MakerStage: ObservableObject {
             roll = frame.roll
             spin = frame.spin
             if moveClock >= Moves.seconds(move) { playing = nil }
+        } else if ear.level > 0.02 {
+            // Being spoken to: the same listening the stage does.
+            let cue = Listening.cue(for: ear, at: time, energy: energy)
+            target.yaw = 0.35 + (0.12 - 0.35) * cue.attention
+            target.bodyY = 1.2 * sin(time * 2.2) + cue.bounce
+            target.lean = cue.lean
+            target.tilt = cue.sway
+            target.headTilt = cue.headTilt
+            target.headPitch = cue.headPitch
+            target.squash = cue.squash
+            target.armOutL = 0.12 + cue.armsOut
+            target.armOutR = 0.12 + cue.armsOut + 1.7 * cue.handUp
+            target.armL = cue.armsForward
+            target.armR = cue.armsForward
+            target.elbowL = 0.2 + cue.elbows
+            target.elbowR = 0.2 + cue.elbows + 0.5 * cue.handUp
+            target.eyeOpen = cue.eyeOpen
+            target.smile = cue.smile
+            target.mouthOpen = cue.mouth
+            target.browAngle = cue.brow
+            target.browLift = cue.browLift
+            target.browCock = cue.browCock
+            target.blush = cue.blush
+            target.lookX = cue.lookX
+            target.lookY = cue.lookY
         } else if loop == "stand" {
             // Standing: breathing and a slow look around.
             target.yaw = 0.35
@@ -648,6 +693,7 @@ struct SprytMakerView: View {
     @StateObject private var stage = MakerStage()
     @State private var tab = MakerTab.look
     @State private var putAway: CharacterSheet?
+    @State private var said = ""
     let onRestart: () -> Void
 
     var body: some View {
@@ -659,11 +705,14 @@ struct SprytMakerView: View {
         .onAppear {
             stage.show(model.look, key: model.lookKey)
             stage.motion = model.fullMotion
+            stage.energy = model.energy
             stage.start()
         }
         .onDisappear { stage.stop() }
         .onChange(of: model.lookKey) { stage.show(model.look, key: model.lookKey) }
         .onChange(of: model.motionKey) { stage.motion = model.fullMotion }
+        .onChange(of: model.energy) { stage.energy = model.energy }
+        .onChange(of: said) { stage.hear(said, name: model.cleanName) }
         .confirmationDialog("Put \(putAway?.name ?? "this Spryt") away?", isPresented: Binding(get: { putAway != nil }, set: { if !$0 { putAway = nil } })) {
             Button("Put Away") {
                 if let sheet = putAway { model.putAway(sheet) }
@@ -912,6 +961,17 @@ struct SprytMakerView: View {
 
     private var voiceForm: some View {
         Form {
+            Section {
+                TextField("Say something to \(model.cleanName)", text: $said)
+                    .onSubmit {
+                        stage.answer(said, name: model.cleanName)
+                        said = ""
+                    }
+            } header: {
+                Text("Try it")
+            } footer: {
+                Text("Watch it listen as you type, then press Return. Try a greeting, good news, bad news, a question, or “do a flip”. It reads the words on this Mac; nothing is sent.")
+            }
             Section {
                 FlowRow(spacing: 6) {
                     ForEach(MakerModel.tones, id: \.name) { tone in
