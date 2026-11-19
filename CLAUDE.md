@@ -25,7 +25,8 @@ Only Pip (the generalist) has the apps, the desk and the Mac-control actions.
 
 Roles so far: `generalist` (Pip, the chief of staff: `ChiefOfStaff.swift`, his office files and the Today desk),
 `coder` (Nova, IDE: `Workspace.swift`, `Changes.swift`, `NovaTools.swift`), `writer` (Ember, studio), `coach` (Rally, training room),
-`forecaster` (Drizzle, the real weather and nothing else: `Weather.swift`, `Forecast.swift`).
+`forecaster` (Drizzle, the real weather and nothing else: `Weather.swift`, `Forecast.swift`),
+`gamer` (Joy, the arcade: `Joy.swift`, `Arcade.swift`, `ArcadeLevels.swift`).
 
 ## Home-made and shared Spryts
 
@@ -45,6 +46,19 @@ Anyone can make a Spryt in the maker (`SprytMaker.swift`, ✦ menu) and share it
   never added to a prompt.
 - The maker is native: system surfaces, grouped forms, the system accent. Four tabs and one stage; a new control
   goes in the tab it belongs to, not in a fifth place.
+
+## The arcade
+
+Joy's games (`Arcade.swift`) are a see-through layer over the screen whose level is built from the open windows
+(`ArcadeLevels.swift`).
+
+- **Breaking is pretend.** A game may measure window positions and draw over them. It must never move, resize, close,
+  hide, focus or read a real window, and must not ask for screen recording or accessibility permission.
+- Esc always leaves at once. Losing focus pauses. A game starts only when the person asks for one.
+- Every level must be finishable on any desktop, including an empty one: `ArcadeLevels` is pure, and
+  `tools/check-arcade.command` proves it on random desktops and plays both games with scripted keys. Run it after any change.
+- Joy has no tools on either engine, like a companion. Games are started by the app's buttons, never by the model.
+- A new game is an `ArcadeGame` case, a scene in `Arcade.swift`, a card in her arcade and a line in her prompt.
 
 ## Listening
 

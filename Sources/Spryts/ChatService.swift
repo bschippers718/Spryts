@@ -98,6 +98,8 @@ final class ChatSession: ObservableObject {
     var onReply: ((String) -> Void)?   // called once with the next finished reply, then cleared
     var onOpenWorkspace: (() -> Void)?
     var onPlay: (() -> Void)?
+    /// Starts one of Joy's desktop games by id. Set only when a gamer is on the team.
+    var onArcade: ((String) -> Void)?
     var onTaskFinished: ((String, String) -> Void)?   // what was asked, and what was done
     var approvalQueue: [Approval] = []
     var taskGrants: Set<String> = []

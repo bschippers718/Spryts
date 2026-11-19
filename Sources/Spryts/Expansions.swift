@@ -23,6 +23,8 @@ struct RoleTheme {
         case "forecaster":
             return RoleTheme(scheme: .dark, design: .rounded, corner: 30,
                              paper: Color(red: 0.12, green: 0.14, blue: 0.20))
+        case "gamer":
+            return RoleTheme(scheme: nil, design: .monospaced, corner: 16, paper: nil)
         case "coach":
             return RoleTheme(scheme: .dark, design: .rounded, corner: 18,
                              paper: Color(red: 0.05, green: 0.11, blue: 0.13))

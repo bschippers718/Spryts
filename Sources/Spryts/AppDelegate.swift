@@ -66,6 +66,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var grabbed: SprytCharacter?
     private var game: OrangeSmash?
+    private let arcade = ArcadeController()
     private var engineItems: [NSMenuItem] = []
     private var hud: GameHUDController?
     private var dragging = false
@@ -165,6 +166,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             character.session.onPlay = { [weak self] in
                 Task { @MainActor [weak self] in self?.startGame(playID) }
             }
+            // With a gamer on the team, everyone can hand you over to her arcade while they work.
+            if sheets.contains(where: { $0.role == "gamer" }) {
+                character.session.onArcade = { [weak self] game in
+                    Task { @MainActor [weak self] in self?.startArcade(game) }
+                }
+            }
             bubbles[sheet.id] = SpeechBubbleController()
             if sheet.role == "forecaster" { weatherDrops[sheet.id] = WeatherDropController(id: sheet.id) }
             hover[sheet.id] = 0
@@ -227,6 +234,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 controller = ForecastRoomController(session: character.session, sheet: character.sheet)
             case "coach":
                 controller = TrainingRoomController(session: character.session, sheet: character.sheet)
+            case "gamer":
+                controller = ArcadeRoomController(session: character.session, sheet: character.sheet)
             case "generalist":
                 controller = DeskController(session: character.session, sheet: character.sheet, shelf: shelf, team: characters.map(\.session))
             default:
@@ -251,6 +260,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case "coder": return "IDE"
         case "writer": return "studio"
         case "coach": return "training room"
+        case "gamer": return "arcade"
         case "forecaster": return "forecast"
         default: return "desk"
         }
@@ -263,6 +273,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case "coder": return "code"
         case "writer": return "writing"
         case "coach": return "training"
+        case "gamer": return "games"
         case "forecaster": return "weather"
         case "companion": return "made by you"
         default: return role ?? ""
@@ -271,7 +282,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Roles that have an expanded view built for them.
     static func hasPlace(_ role: String?) -> Bool {
-        ["generalist", "coder", "writer", "coach", "forecaster"].contains(role ?? "generalist")
+        ["generalist", "coder", "writer", "coach", "forecaster", "gamer"].contains(role ?? "generalist")
     }
 
     @objc private func openWorkspaceFromMenu(_ sender: NSMenuItem) {
@@ -613,7 +624,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         hud = scoreboard
     }
 
+    /// Starts one of Joy's games over the desktop. She watches from the stage.
+    func startArcade(_ raw: String) {
+        guard let which = ArcadeGame(rawValue: raw) else { return }
+        endGame()
+        let joy = characters.first(where: { $0.sheet.role == "gamer" })
+        if let joy {
+            // Her own windows step aside so the level is the person's desktop, not hers.
+            workspaces[joy.sheet.id]?.close()
+            if joy.isOffstage { joy.returnToStage(world: world, others: characters) }
+        }
+        for panel in panels.values { panel.hide() }
+        arcade.onClosed = { ArcadeScores.shared.reload() }
+        arcade.start(which, host: joy)
+    }
+
     func endGame() {
+        arcade.stop()
         game?.stop()
         game = nil
         hud?.close()

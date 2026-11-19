@@ -68,6 +68,23 @@ struct SprytPersonality {
                 "Consider me charmed.",
                 "I'll keep that line."
             ]
+        case "gamer":
+            greetingGesture = "slash"
+            microGestures = [1, 4, 5, 6, 7, 11, 12]
+            breathingRate = 2.4
+            talkingEnergy = 1.0
+            openers = [
+                "{name}! Fancy a quick round?",
+                "Player two has entered: {name}.",
+                "{name}, best of three?",
+                "Psst, {name}. I found a secret level."
+            ]
+            answers = [
+                "You're on.",
+                "Save point reached.",
+                "Good game. Really.",
+                "One more go, then back to work."
+            ]
         case "coach":
             greetingGesture = "pump"
             microGestures = [1, 4, 5, 6, 7, 11, 12]

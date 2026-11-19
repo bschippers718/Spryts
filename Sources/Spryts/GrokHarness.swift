@@ -156,8 +156,8 @@ extension ChatSession {
                          "--no-auto-update",
                          "--cwd", (projectFolder ?? Harness.grokWorkspace).path]
         arguments += fresh ? ["-s", id] : ["-r", id]
-        if sheet.role == "companion" {
-            // A home-made or shared Spryt only talks. Nothing is auto-approved, so Grok refuses any tool it reaches for.
+        if sheet.role == "companion" || sheet.role == "gamer" {
+            // A home-made or shared Spryt only talks, and so does the arcade's host. Nothing is auto-approved, so Grok refuses any tool it reaches for.
             arguments += ["--disallowed-tools", "run_terminal_cmd,run_terminal_command,search_replace,read_file,grep,list_dir,web_search,web_fetch,Agent"]
         } else if gated {
             // Every tool call goes through the gate, which asks the person in Spryts.

@@ -136,6 +136,24 @@ show Draft ready, Working, Response ready, Needs attention, or Interrupted. Thes
 Response ready does not certify that every proposed real-world action happened. Scenes are reusable requests, not yet a
 scheduled workflow engine with dependency tracking or structured artifact verification.
 
+## Joy and the arcade
+
+Joy is the gamer: a small indigo adventurer who carries a joystick like a sword. Her games are played on top of your
+desktop as it is right now, with your open windows as the level. A game only measures where the windows are. It never
+moves, closes, hides or reads one, needs no screen-recording permission, and **Esc gives the screen straight back**.
+
+- **Window Climb.** The tops of your windows are ledges; folders appear as stepping stones wherever the windows leave
+  a gap. Reach the door on the highest ledge. Spinning beach balls roll down at you: jump one for 100, swing the
+  joystick at one for 150. From level 2, cursors fly across after a warning. ← → move, Space jumps (hold for higher),
+  ↓ + Space drops through a ledge, X swings.
+- **Window Breaker.** Your windows are tiled into bricks and Joy carries the paddle. Title-bar bricks take two hits,
+  clearing a whole window is worth 200, and gifts fall: W wide paddle, 3 multi-ball, S slow, a heart for a life.
+  Mouse or ← → move, Space or a click launches.
+- In both: P pauses, M mutes, and clicking another app pauses the game.
+
+Start a game from Joy's popup or her **arcade** window, which also keeps the high scores. With Joy on the team, any
+character's long task offers "Play Window Climb while you wait". Joy herself only talks: she has no tools.
+
 ## They listen while you type
 
 A Spryt reads what you are typing to it and answers with its body, before any reply arrives.
@@ -269,6 +287,7 @@ These checks use temporary storage and fake agent processes; they do not run mod
 - `bash tools/check-harness.command` — subprocess completion, diagnostic isolation, and cancellation.
 - `bash tools/check-scenes.command` — starter scope, custom Scene persistence, request building, and recovery.
 - `bash tools/check-x-connection.command` — PKCE, strict callbacks, token storage, API responses, and cancellation using fixtures.
+- `bash tools/check-arcade.command` — Joy's games: 500 random desktops must give a climb where every ledge is reachable and bricks that never overlap; then both games are run in SpriteKit with scripted keys, and pictures are saved in `arcade-shots/`. Writes `arcade-check.log`.
 - `bash tools/check-listening.command` — how a Spryt reads typed text and what its body does: feelings, questions, move requests and false alarms, typing rhythm, and the limits on every cue. Writes `listening-check.log`.
 - `bash tools/check-sift.command` — the X Feed: settings validation, List addresses, storage, Sift's own files in a real web view on a stand-in page, and the brief sent to Pip. Writes `sift-check.log`.
 - `bash tools/check-build.command` — compiles the app without installing or restarting it.

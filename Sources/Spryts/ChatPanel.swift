@@ -26,9 +26,11 @@ struct ChatView: View {
     private var isCoach: Bool { role == "coach" }
     private var isGeneralist: Bool { role == "generalist" }
     private var isForecaster: Bool { role == "forecaster" }
+    private var isGamer: Bool { role == "gamer" }
 
     private var emptyHint: String {
         if isCoach { return "\(name) is your coach. Ask for a workout, log a session, or click to open the training room." }
+        if isGamer { return "\(name) runs the arcade. Your open windows are the level: pick a game below, or ask for a tip." }
         if isForecaster { return "\(name) is your weather. Click the cloud for the next five days, or ask what to wear." }
         if !isCoder && !isWriter && !isGeneralist { return "Ask \(name) anything." }
         if isCoder { return "\(name) is the programmer. Click to open the IDE, or ask a quick question about the code here." }
@@ -170,6 +172,8 @@ struct ChatView: View {
                 writerStrip
             } else if isForecaster {
                 SkyStrip(session: session, service: WeatherService.of(session.sheet.id))
+            } else if isGamer {
+                ArcadeStrip(session: session, scores: ArcadeScores.shared)
             } else if isCoach {
                 CoachStrip(session: session, journal: TrainingJournal.of(session.sheet.id), tint: tint)
             } else if isGeneralist {
@@ -379,10 +383,13 @@ struct ChatView: View {
 
     /// Shown while the agent is working: something to do while you wait.
     private var playRow: some View {
-        Button(action: { session.onPlay?() }) {
+        Button(action: {
+            // With Joy on the team the wait goes to her arcade; otherwise to the oranges.
+            if let arcade = session.onArcade { arcade(ArcadeGame.climb.rawValue) } else { session.onPlay?() }
+        }) {
             HStack(spacing: 8) {
                 Image(systemName: "gamecontroller.fill")
-                Text("Play Orange Smash while you wait")
+                Text(session.onArcade != nil ? "Play Window Climb while you wait" : "Play Orange Smash while you wait")
                     .font(.system(size: 12, weight: .semibold))
                 Spacer()
             }
@@ -413,6 +420,8 @@ struct ChatView: View {
                     writerActions
                 } else if isCoach {
                     coachActions
+                } else if isGamer {
+                    gamerActions
                 } else if isForecaster {
                     forecasterActions
                 } else if isGeneralist {
@@ -437,6 +446,22 @@ struct ChatView: View {
                 chip("This weekend") {
                     session.ask(display: "How's the weekend looking?", prompt: "How does the coming weekend look? If it is beyond your five days, say so.")
                 }
+            }
+            .padding(.horizontal, 12)
+            .padding(.top, 6)
+        }
+    }
+
+    private var gamerActions: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                chip("Play Window Climb") { session.onArcade?(ArcadeGame.climb.rawValue) }
+                chip("Play Window Breaker") { session.onArcade?(ArcadeGame.breaker.rawValue) }
+                chip("A tip") {
+                    session.ask(display: "Got a tip for me?",
+                                prompt: "Give me one tip for whichever of your games my scores say I need it most. Say which game.")
+                }
+                chip("High scores") { session.onOpenWorkspace?() }
             }
             .padding(.horizontal, 12)
             .padding(.top, 6)
@@ -583,6 +608,7 @@ struct ChatView: View {
         if isWriter { return "Ask \(name) about words…" }
         if isCoach { return "Tell \(name) how it went, or ask for a session…" }
         if isForecaster { return "Ask \(name) about the weather…" }
+        if isGamer { return "Talk games with \(name)…" }
         if isGeneralist { return "Ask \(name), or say what's on your plate…" }
         return "Ask \(name)…"
     }

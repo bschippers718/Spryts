@@ -39,7 +39,7 @@ struct Pose {
     var flap: CGFloat = 0         // wings, for characters that have them
     var earsBack: CGFloat = 0     // ears pinned flat (startled)
     var glowAlt: CGFloat = 0      // paired bulbs flicker in turn
-    var prop: Int = 0             // 0 nothing, 1 laptop, 2 a page; not eased
+    var prop: Int = 0             // 0 nothing, 1 laptop, 2 a page, 3 Joy's joystick drawn; not eased
     var twitch: CGFloat = 0       // a quick flick of ears and antenna; not eased
     var roll: CGFloat = 0         // whole-body rotation in the screen plane (flips, cartwheels); not eased
     var spin: CGFloat = 0         // extra turn on the spot (twirls); not eased
@@ -151,6 +151,8 @@ final class ProceduralBody: CharacterBody {
     private var legLower: [SCNNode] = []
     private var armUpper: [SCNNode] = []
     private var armLower: [SCNNode] = []
+    private var stickBack: SCNNode?
+    private var stickHand: SCNNode?
     private var antennas: [SCNNode] = []
     private var cape: SCNNode?
     private var tail: SCNNode?
@@ -502,6 +504,35 @@ final class ProceduralBody: CharacterBody {
                 skull.addChildNode(tie)
             }
         }
+        if features.contains("joystick") {
+            // Joy's joystick, worn across the back like a sword and drawn into the right hand to swing.
+            func stick(_ length: CGFloat) -> SCNNode {
+                let whole = SCNNode()
+                let shaft = shape(SCNCylinder(radius: limbR * 0.42, height: length), NSColor(hex: "#16142B"))
+                shaft.position = v3(0, length / 2, 0)
+                whole.addChildNode(shaft)
+                let hilt = shape(SCNTorus(ringRadius: limbR * 1.05, pipeRadius: limbR * 0.36), accent)
+                hilt.position = v3(0, length * 0.2, 0)
+                whole.addChildNode(hilt)
+                let ball = shape(SCNSphere(radius: limbR * 1.55), trim)
+                ball.position = v3(0, length + limbR * 1.1, 0)
+                whole.addChildNode(ball)
+                return whole
+            }
+            let back = stick(torsoH * 1.3)
+            back.position = v3(torsoW * 0.3, torsoH * 0.15, -torsoW * 0.5)
+            back.eulerAngles = v3(0, 0, 0.55)
+            torso.addChildNode(back)
+            stickBack = back
+            if armLower.count > 1 {
+                let held = stick(torsoH * 1.3)
+                held.position = v3(0, -armLen * 0.48, 0)
+                held.eulerAngles = v3(CGFloat.pi / 2, 0, 0)
+                held.isHidden = true
+                armLower[1].addChildNode(held)
+                stickHand = held
+            }
+        }
         if features.contains("wristbands") {
             for lower in armLower {
                 let cuff = shape(SCNTorus(ringRadius: limbR * 1.0, pipeRadius: limbR * 0.38), trim)
@@ -778,6 +809,8 @@ final class ProceduralBody: CharacterBody {
         }
         prop.isHidden = !(showProp && pose.prop == 1)
         page.isHidden = !(showProp && pose.prop == 2)
+        stickHand?.isHidden = pose.prop != 3
+        stickBack?.isHidden = pose.prop == 3
     }
 }
 

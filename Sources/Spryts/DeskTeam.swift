@@ -165,6 +165,7 @@ private struct DeskMemberRow: View {
         case "coder": return "Programming"
         case "writer": return "Writing"
         case "coach": return "Training"
+        case "gamer": return "Games"
         case "forecaster": return "Weather"
         case "generalist": return "Chief of Staff"
         default: return "Companion"
@@ -176,6 +177,7 @@ private struct DeskMemberRow: View {
         case "coder": return "chevron.left.forwardslash.chevron.right"
         case "writer": return "pencil.line"
         case "coach": return "figure.run"
+        case "gamer": return "gamecontroller"
         case "forecaster": return "cloud.sun"
         default: return "sparkle"
         }

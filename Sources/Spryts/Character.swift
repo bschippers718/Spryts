@@ -87,6 +87,8 @@ final class SprytCharacter {
     /// The specialists are absorbed in their craft; only the generalist plays.
     private var isSpecialist: Bool { isCoder || isWriter }
     private var isCoach: Bool { sheet.role == "coach" }
+    /// Joy, who runs the arcade. Her spare moments: 5 sword practice, 6 an imaginary controller, 7 a victory pose.
+    private var isGamer: Bool { sheet.role == "gamer" }
     /// What the coach does with a spare moment: 1 jumping jacks, 2 squats, 3 side stretches, 4 running on the spot.
     private var drill = 0
     private var lastDrill = 0
@@ -1636,6 +1638,14 @@ return CGRect(x: pos.x - H * 0.45, y: pos.y + altitude - 4, width: H * 0.9, heig
                         lastDrill = next
                         hobbyTime = CGFloat.random(in: 5...8)
                         nextFidget = hobbyTime + CGFloat.random(in: 15...35)
+                    } else if isGamer && CGFloat.random(in: 0...1) < 0.6 {
+                        // The gamer keeps her hand in: a few swings, a round on an invisible controller, a pose.
+                        var next = Int.random(in: 5...7)
+                        if next == lastDrill { next = next == 7 ? 5 : next + 1 }
+                        drill = next
+                        lastDrill = next
+                        hobbyTime = CGFloat.random(in: 4...6)
+                        nextFidget = hobbyTime + CGFloat.random(in: 15...35)
                     } else if isForecaster {
                         // A cloud drifts: slow, sideways, looking up at the weather. Never a jump.
                         let pool = [1, 13, 17, 19, 24, 25]
@@ -2786,6 +2796,43 @@ return CGRect(x: pos.x - H * 0.45, y: pos.y + altitude - 4, width: H * 0.9, heig
                 p.armOutL = s < 0 ? 2.8 : 0.3
                 p.elbowL = 0.2
                 p.elbowR = 0.2
+            case 5:
+                // Sword practice with the joystick: a swing, a step in, back to guard.
+                let w = sin(t * 4.2)
+                p.prop = 3
+                p.yaw = 0.7 * facing
+                p.armR = 1.5 + 0.9 * w
+                p.elbowR = 0.3 + 0.5 * max(0, -w)
+                p.armOutR = 0.3
+                p.armL = -0.4
+                p.elbowL = 1.2
+                p.legL = 0.35 * max(0, w)
+                p.kneeL = 0.3 * max(0, w)
+                p.lean = 0.12 * w
+                p.twist = 0.3 * w
+                p.bodyY -= 2 * max(0, w)
+            case 6:
+                // A round on a controller only she can see: leaning into the corners, thumbs going.
+                p.armL = 0.9
+                p.armR = 0.9
+                p.elbowL = 1.5 + 0.06 * sin(t * 19)
+                p.elbowR = 1.5 + 0.08 * sin(t * 23)
+                p.tilt = 0.12 * sin(t * 2.2)
+                p.headTilt = 0.14 * sin(t * 2.2)
+                p.lean = 0.1
+                p.bodyY += 1.5 * abs(sin(t * 6))
+            case 7:
+                // Level clear: the joystick held high, a hand on the hip.
+                p.prop = 3
+                p.yaw = 0.2 * facing
+                p.armOutR = 2.9
+                p.armR = 0
+                p.elbowR = 0.05
+                p.armOutL = 0.5
+                p.elbowL = 1.6
+                p.lean = -0.08
+                p.headPitch = -0.2
+                p.bodyY += 3 + 1.2 * sin(t * 3)
             default:
                 // Running on the spot.
                 let s = sin(t * 12)
@@ -2828,6 +2875,17 @@ return CGRect(x: pos.x - H * 0.45, y: pos.y + altitude - 4, width: H * 0.9, heig
                 p.elbowR = 0.5 + 0.3 * sin(t * 14 + 1)
             case "nod":
                 p.headPitch += 0.25 * sin(t * 12)
+            case "slash":
+                // Joy's hello: the joystick drawn and swept across in one crisp arc.
+                let e = clamp(1 - gestureTime / 1.9, 0, 1)
+                let sweep = sin(CGFloat.pi * min(1, e * 1.6))
+                p.prop = 3
+                p.yaw = 0.5 * facing
+                p.armR = 2.4 - 1.9 * sweep
+                p.armOutR = 0.5 * (1 - sweep)
+                p.elbowR = 0.2
+                p.twist = 0.35 * (sweep - 0.5)
+                p.lean = 0.1 * sweep
             case "bow":
                 // Ember acknowledges the room with a small, unhurried bow.
                 let e = sin(CGFloat.pi * clamp(1 - gestureTime / 1.9, 0, 1))
