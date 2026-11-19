@@ -254,4 +254,6 @@ These checks use temporary storage and fake agent processes; they do not run mod
 - `bash tools/check-harness.command` — subprocess completion, diagnostic isolation, and cancellation.
 - `bash tools/check-scenes.command` — starter scope, custom Scene persistence, request building, and recovery.
 - `bash tools/check-x-connection.command` — PKCE, strict callbacks, token storage, API responses, and cancellation using fixtures.
+- `bash tools/check-sift.command` — the X Feed: settings validation, List addresses, storage, Sift's own files in a real web view on a stand-in page, and the brief sent to Pip. Writes `sift-check.log`.
+- `bash tools/check-build.command` — compiles the app without installing or restarting it.
 - `bash tools/check-x-evidence.command` — bounded social evidence, source provenance, escaping, and excerpt labels.
