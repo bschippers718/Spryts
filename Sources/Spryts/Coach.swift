@@ -280,6 +280,11 @@ struct TrainingRoomView: View {
 
     private var today: some View {
         VStack(alignment: .leading, spacing: 16) {
+            MoveBreaksCard(breaks: MoveBreaks.of(session.sheet.id), name: name, tint: teal)
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(card)
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             section("WORKOUT RIGHT NOW") {
                 picker("Time", [10, 20, 30, 45, 60].map { "\($0)" }, "\(minutes)") { minutes = Int($0) ?? 20 }
                 picker("Where", ["Home", "Gym", "Outdoors", "Hotel"], place) { place = $0 }

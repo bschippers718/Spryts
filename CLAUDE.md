@@ -47,6 +47,16 @@ Anyone can make a Spryt in the maker (`SprytMaker.swift`, ✦ menu) and share it
 - The maker is native: system surfaces, grouped forms, the system accent. Four tabs and one stage; a new control
   goes in the tab it belongs to, not in a fifth place.
 
+## Rally's move breaks
+
+`Exercises.swift` (the exercises and Rally's pose for each, pure) and `CoachBreaks.swift` (`MoveBreaks`: which pack, how
+often, when the next is due; the menu and the cards).
+
+- A break never needs the AI and never opens a window: a chime, a line from Rally, and he does it. Keep it that simple.
+- One pack at a time, every 30 or 60 minutes, held while the person is away. Choosing a pack leads one at once.
+- A new exercise is an entry in `Exercises.all` plus its pose. Draw it with `tools/check-exercises.command` and look at
+  the picture before shipping: feet and hands must meet the floor line.
+
 ## The arcade
 
 Joy's games (`Arcade.swift`) are a see-through layer over the screen whose level is built from the open windows

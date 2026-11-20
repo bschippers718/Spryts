@@ -803,6 +803,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         let presence = Presence(idle: idleSeconds, returned: returned, night: night, greeterID: returnGreeter?.sheet.id)
+        // The coach's movement breaks: due on the clock, held while nobody is at the Mac.
+        for coach in characters where coach.sheet.role == "coach" {
+            let breaks = MoveBreaks.of(coach.sheet.id)
+            if breaks.lead == nil {
+                breaks.lead = { [weak self, weak coach] exercise in
+                    guard let self, let coach else { return false }
+                    if coach.isOffstage { coach.returnToStage(world: self.world, others: self.characters); return false }
+                    return coach.lead(exercise)
+                }
+            }
+            breaks.tick(away: idleSeconds > 300)
+        }
         var overAny = false
         for character in characters {
             let id = character.sheet.id

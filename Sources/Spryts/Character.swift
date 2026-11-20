@@ -87,6 +87,30 @@ final class SprytCharacter {
     /// The specialists are absorbed in their craft; only the generalist plays.
     private var isSpecialist: Bool { isCoder || isWriter }
     private var isCoach: Bool { sheet.role == "coach" }
+    /// The movement break the coach is leading right now, and how far in he is. See Exercises.swift.
+    private var leading: Exercise?
+    private var leadTime: CGFloat = 0
+    private var leadRep = 0
+
+    /// Starts a movement break with the person: he says what it is, does it, counts the reps and signs off.
+    /// Returns false if he is in the middle of something and should be asked again in a moment.
+    func lead(_ exercise: Exercise) -> Bool {
+        if mode == .napping || mode == .sitting { wake() }
+        if mode == .walking { setMode(.idle) }
+        guard mode == .idle, puppet == nil, activity == .none || activity == .waiting else { return false }
+        setActivity(.none)
+        leading = exercise
+        leadTime = 0
+        leadRep = 0
+        drill = 8
+        hobbyTime = exercise.seconds
+        nextFidget = exercise.seconds + 30
+        idleFor = exercise.seconds + 2
+        sinceInteraction = 0
+        pendingSpeech = exercise.call
+        return true
+    }
+
     /// Joy, who runs the arcade. Her spare moments: 5 sword practice, 6 an imaginary controller, 7 a victory pose.
     private var isGamer: Bool { sheet.role == "gamer" }
     /// What the coach does with a spare moment: 1 jumping jacks, 2 squats, 3 side stretches, 4 running on the spot.
@@ -1096,6 +1120,23 @@ return CGRect(x: pos.x - H * 0.45, y: pos.y + altitude - 4, width: H * 0.9, heig
             if activity != .none || mode != .idle { hobbyTime = 0 }
         }
         if hobbyTime <= 0 { drill = 0 }
+        if let exercise = leading {
+            leadTime += dt
+            let rep = Exercises.rep(exercise, at: leadTime)
+            if rep > leadRep {
+                // Counting out loud, the way a coach does.
+                leadRep = rep
+                showEmote("\(rep)")
+            }
+            if hobbyTime <= 0 || drill != 8 {
+                let finished = leadTime >= exercise.seconds - 0.5
+                leading = nil
+                if finished {
+                    pendingSpeech = exercise.done
+                    cheer()
+                }
+            }
+        }
         if flashTime > 0 { flashTime -= dt }
         if smokeTime > 0 {
             smokeTime -= dt
@@ -2905,6 +2946,11 @@ return CGRect(x: pos.x - H * 0.45, y: pos.y + altitude - 4, width: H * 0.9, heig
                 p.armOutL = s < 0 ? 2.8 : 0.3
                 p.elbowL = 0.2
                 p.elbowR = 0.2
+            case 8:
+                // Leading a movement break: the exercise itself, at the pace the reps are counted.
+                if let exercise = leading {
+                    p = Exercises.pose(exercise.id, at: leadTime, L: body.legLength, facing: facing)
+                }
             case 5:
                 // Sword practice with the joystick: a swing, a step in, back to guard.
                 let w = sin(t * 4.2)

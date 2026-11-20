@@ -471,6 +471,9 @@ struct ChatView: View {
     private var coachActions: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
+                // First in the row: the starter packs. Pick one and he reminds you, then does it with you.
+                MoveBreaksMenu(breaks: MoveBreaks.of(session.sheet.id))
+                    .controlSize(.small)
                 chip("20-minute workout") {
                     session.ask(display: "A 20-minute workout, no kit",
                                 prompt: "Give me a 20-minute workout I can do right now with no equipment. Check my profile and recent log so it fits. Warm-up, main set, cool-down.")
@@ -850,11 +853,19 @@ struct CoachStrip: View {
     @ObservedObject var journal: TrainingJournal
     let tint: Color
     @ObservedObject private var strava = Strava.shared
+    @ObservedObject private var breaks: MoveBreaks
+
+    init(session: ChatSession, journal: TrainingJournal, tint: Color) {
+        self.session = session
+        self.journal = journal
+        self.tint = tint
+        _breaks = ObservedObject(wrappedValue: MoveBreaks.of(session.sheet.id))
+    }
 
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: "flame.fill").font(.system(size: 13)).foregroundColor(.orange)
-            Text(journal.summary)
+            Text(breaks.isOn ? breaks.summary : journal.summary)
                 .font(.system(size: 12, weight: .bold))
                 .lineLimit(1)
             Spacer()

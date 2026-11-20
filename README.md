@@ -136,6 +136,19 @@ show Draft ready, Working, Response ready, Needs attention, or Interrupted. Thes
 Response ready does not certify that every proposed real-world action happened. Scenes are reusable requests, not yet a
 scheduled workflow engine with dependency tracking or structured artifact verification.
 
+## Rally's move breaks
+
+Pick a starter pack and Rally reminds you to move, then does it with you. No AI call, no set-up.
+
+- **Packs:** Stand Up (reach, side bends, loosen the shoulders), Push-ups (10), Sit-ups (15), Squats (15), or Mix It Up,
+  which takes each in turn.
+- **How often:** every 30 minutes or every hour.
+- **What happens:** choosing a pack starts one straight away. After that, when a break is due there is a soft chime,
+  Rally says what it is, does the exercise on your screen and counts the reps out loud. Breaks wait while you are away
+  from the Mac.
+- **Where:** the first control in Rally's popup ("Move breaks"), or the cards at the top of his training room, which
+  also show how many you have done today. "Do one now" and "Off" are in both.
+
 ## Joy and the arcade
 
 Joy is the gamer: a small indigo adventurer who carries a joystick like a sword. Her games are played on top of your
@@ -288,6 +301,7 @@ These checks use temporary storage and fake agent processes; they do not run mod
 - `bash tools/check-harness.command` — subprocess completion, diagnostic isolation, and cancellation.
 - `bash tools/check-scenes.command` — starter scope, custom Scene persistence, request building, and recovery.
 - `bash tools/check-x-connection.command` — PKCE, strict callbacks, token storage, API responses, and cancellation using fixtures.
+- `bash tools/check-exercises.command` — Rally's move breaks: rep counting, and a picture of him doing each exercise (`arcade-shots/rally-breaks.png`).
 - `bash tools/check-arcade.command` — Joy's games: 500 random desktops must give a climb where every ledge is reachable and bricks that never overlap; then both games are run in SpriteKit with scripted keys, and pictures are saved in `arcade-shots/`. Writes `arcade-check.log`.
 - `bash tools/check-listening.command` — how a Spryt reads typed text and what its body does: feelings, questions, move requests and false alarms, typing rhythm, and the limits on every cue. Writes `listening-check.log`.
 - `bash tools/check-sift.command` — the X Feed: settings validation, List addresses, storage, Sift's own files in a real web view on a stand-in page, and the brief sent to Pip. Writes `sift-check.log`.
