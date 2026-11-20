@@ -191,8 +191,8 @@ opened Spryt can chat and nothing else: it has no tools and no access to files o
 ## X Feed (Sift, built in)
 
 Pip's workspace has an **X Feed** pane: X's own site, shown inside Spryts, with [Sift](https://benschippers.com) running
-in the page. Sign in to X once in the pane (username and password; Google and Apple sign-in buttons don't work inside
-an app) and it stays signed in. No API key, no credits.
+in the page. Sign in to X once in the pane and it stays signed in. Sign in with Google or Apple opens a small window inside
+Spryts and brings you back. No API key, no credits.
 
 - **Filters** is Sift's settings as a Mac form: a List to read from, starter packs and topics, blocked phrases,
   promoted posts, reposts, quotes, accounts to always or never show, a cap per account, and the focus layout.

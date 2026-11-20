@@ -128,7 +128,7 @@ struct PipSiftView: View {
         if let problem = controller.problem { return (problem, "wifi.exclamationmark", true) }
         if let problem = store.error { return (problem, "exclamationmark.triangle", true) }
         if controller.signedOut {
-            return ("Sign in to X with your username and password. Sign in with Google or Apple isn’t available inside Spryts.",
+            return ("Sign in to X here. Google and Apple open a small sign-in window and bring you straight back.",
                     "person.crop.circle", false)
         }
         return nil

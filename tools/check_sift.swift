@@ -195,6 +195,23 @@ struct SiftChecks {
         expect(!(live.settings.trustedHandles + live.settings.hiddenHandles).isEmpty, "Sift's in-page account buttons save into the app")
         expect(SiftStore(file: root.appendingPathComponent("sift-live.json")).settings == live.settings, "and that choice is on disk")
 
+        // Sign in with Google or Apple: the window X opens must be ours, and must be able to answer the page.
+        expect(SiftWebController.isSignIn(URL(string: "https://accounts.google.com/gsi/select")!)
+               && SiftWebController.isSignIn(URL(string: "https://appleid.apple.com/auth/authorize")!)
+               && !SiftWebController.isSignIn(URL(string: "http://accounts.google.com/")!)
+               && !SiftWebController.isSignIn(URL(string: "https://accounts.google.com.evil.example/")!)
+               && !SiftWebController.isSignIn(URL(string: "https://example.com/")!), "only Google's and Apple's own sign-in pages count")
+        _ = await page(controller.webView, "window.__heard = ''; addEventListener('message', (e) => { window.__heard = String(e.data); }); window.__popup = window.open('about:blank'); return 1")
+        await pause(0.8)
+        expect(controller.signingIn, "a sign-in window opens inside the app, not in the browser")
+        _ = await page(controller.webView, "window.__popup.eval(\"opener.postMessage('signed-in', '*')\"); return 1")
+        await pause(0.5)
+        let heard = await page(controller.webView, "return window.__heard")
+        expect(heard == "signed-in", "the sign-in window can hand its result back to X")
+        _ = await page(controller.webView, "window.__popup.close(); return 1")
+        await pause(0.8)
+        expect(!controller.signingIn, "and it closes itself when it is done")
+
         live.update { $0.enabled = false }
         await pause(1.2)
         let third = await page(controller.webView, hidden)

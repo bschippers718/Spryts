@@ -17,13 +17,17 @@ private final class SiftMessageRelay: NSObject, WKScriptMessageHandlerWithReply 
 }
 
 @MainActor
-final class SiftWebController: NSObject, ObservableObject, WKNavigationDelegate, WKUIDelegate {
+final class SiftWebController: NSObject, ObservableObject, WKNavigationDelegate, WKUIDelegate, NSWindowDelegate {
     @Published private(set) var loading = false
     @Published private(set) var canGoBack = false
     @Published private(set) var signedOut = false
     @Published private(set) var onFeed = true
     @Published private(set) var problem: String?
     @Published var showFilters = false
+    /// True while the Google or Apple sign-in window is open.
+    @Published private(set) var signingIn = false
+    private var signInPanel: NSPanel?
+    private var signInView: WKWebView?
 
     let webView: WKWebView
     let store: SiftStore
@@ -232,6 +236,10 @@ final class SiftWebController: NSObject, ObservableObject, WKNavigationDelegate,
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction) async -> WKNavigationActionPolicy {
         guard let url = navigationAction.request.url else { return .cancel }
         if let frame = navigationAction.targetFrame, !frame.isMainFrame { return .allow }   // sign-in checks run in frames
+        if webView !== self.webView {
+            // The sign-in window: Google, Apple and X only. Anything else simply does not load.
+            return SiftWebController.isSignIn(url) || SiftWebController.isX(url) || url.absoluteString == "about:blank" ? .allow : .cancel
+        }
         if SiftWebController.isX(url) || url.absoluteString == "about:blank" { return .allow }
         if navigationAction.navigationType == .linkActivated, ["https", "http"].contains(url.scheme?.lowercased() ?? "") {
             NSWorkspace.shared.open(url)
@@ -241,21 +249,86 @@ final class SiftWebController: NSObject, ObservableObject, WKNavigationDelegate,
 
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
                  for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
-        guard let url = navigationAction.request.url else { return nil }
+        let url = navigationAction.request.url
+        let blank = url == nil || url?.absoluteString.isEmpty == true || url?.absoluteString == "about:blank"
+        if webView === self.webView, blank || url.map({ SiftWebController.isSignIn($0) }) == true {
+            // "Sign in with Google" and "Sign in with Apple" open a small window and hand the result back to the page
+            // that opened them. That only works if the window is ours, so it opens here, not in the browser.
+            return openSignIn(with: configuration)
+        }
+        guard let url else { return nil }
         if SiftWebController.isX(url) {
-            webView.load(navigationAction.request)
+            self.webView.load(navigationAction.request)
         } else if ["https", "http"].contains(url.scheme?.lowercased() ?? "") {
             NSWorkspace.shared.open(url)
         }
         return nil
     }
 
+    /// The places a sign-in window may go besides X itself.
+    static func isSignIn(_ url: URL) -> Bool {
+        guard url.scheme?.lowercased() == "https", let host = url.host?.lowercased() else { return false }
+        return ["accounts.google.com", "accounts.youtube.com", "appleid.apple.com", "idmsa.apple.com"].contains(host)
+    }
+
+    /// A small window for the sign-in page. WebKit links it to the feed, so the result reaches X when it closes.
+    private func openSignIn(with configuration: WKWebViewConfiguration) -> WKWebView {
+        closeSignIn()
+        let view = WKWebView(frame: NSRect(x: 0, y: 0, width: 500, height: 660), configuration: configuration)
+        view.navigationDelegate = self
+        view.uiDelegate = self
+        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 500, height: 660),
+                            styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
+        panel.title = "Sign in to X"
+        panel.isReleasedWhenClosed = false
+        panel.isFloatingPanel = true
+        panel.contentView = view
+        panel.delegate = self
+        if let parent = webView.window {
+            let frame = parent.frame
+            panel.setFrameOrigin(NSPoint(x: frame.midX - 250, y: frame.midY - 330))
+        } else {
+            panel.center()
+        }
+        panel.makeKeyAndOrderFront(nil)
+        signInPanel = panel
+        signInView = view
+        signingIn = true
+        return view
+    }
+
+    func closeSignIn() {
+        guard let panel = signInPanel else { return }
+        signInPanel = nil
+        signInView = nil
+        signingIn = false
+        panel.delegate = nil
+        panel.orderOut(nil)
+    }
+
+    /// The sign-in page closed itself: it is done.
+    func webViewDidClose(_ webView: WKWebView) {
+        if webView === signInView { closeSignIn() }
+    }
+
+    /// The person closed the sign-in window.
+    func windowWillClose(_ notification: Notification) {
+        if (notification.object as? NSPanel) === signInPanel { closeSignIn() }
+    }
+
+    func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+        // Always show whose page the sign-in window is on.
+        if webView === signInView, let host = webView.url?.host { signInPanel?.title = "Sign in · " + host }
+    }
+
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        guard webView === self.webView else { return }
         problem = nil
         located(webView.url)
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        guard webView === self.webView else { return }
         let failure = error as NSError
         if failure.domain == NSURLErrorDomain && failure.code == NSURLErrorCancelled { return }
         if failure.domain == "WebKitErrorDomain" && failure.code == 102 { return }       // we sent the link to the browser
@@ -263,6 +336,7 @@ final class SiftWebController: NSObject, ObservableObject, WKNavigationDelegate,
     }
 
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        guard webView === self.webView else { return }
         problem = "The feed stopped. Reload to pick it back up."
     }
 }
