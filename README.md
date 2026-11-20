@@ -151,7 +151,8 @@ moves, closes, hides or reads one, needs no screen-recording permission, and **E
   Mouse or ← → move, Space or a click launches.
 - In both: P pauses, M mutes, and clicking another app pauses the game.
 
-Start a game from Joy's popup or her **arcade** window, which also keeps the high scores. With Joy on the team, any
+Joy herself is the player: the real character on your screen runs, jumps, swings her joystick and carries the paddle.
+Start a game from her popup or her **arcade** window, which also keeps the high scores. With Joy on the team, any
 character's long task offers "Play Window Climb while you wait". Joy herself only talks: she has no tools.
 
 ## They listen while you type

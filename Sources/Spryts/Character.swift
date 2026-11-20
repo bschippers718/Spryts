@@ -140,6 +140,22 @@ final class SprytCharacter {
     private var nextBig = CGFloat.random(in: 180...420)  // set pieces: a few times an hour
     private var bigHistory: [Int] = []
     private var lastMove = ""
+    /// Set while a game is being played with this character as the player: the game says where she is and what
+    /// she is doing, and the stage draws exactly that. Cleared, she lands back on the floor and is herself again.
+    var puppet: ArcadePuppet? {
+        didSet {
+            if puppet == nil && oldValue != nil {
+                node.opacity = 1
+                platformID = 0
+                altitude = 0
+                if let world = lastWorld { pos.y = world.floorY }
+                idleFor = 1.5
+                setMode(.idle)
+            }
+        }
+    }
+    private var puppetStride: CGFloat = 0
+
     /// What it has heard of the message being typed to it. See Listening.swift.
     private var ear = Ear()
     private var hearing: AnyCancellable?
@@ -1041,6 +1057,12 @@ return CGRect(x: pos.x - H * 0.45, y: pos.y + altitude - 4, width: H * 0.9, heig
         modeTime += dt
         activityTime += dt
         sinceInteraction += dt
+        if let puppet {
+            lastWorld = world
+            stageFrame = world.frame
+            perform(puppet, dt: dt)
+            return
+        }
         ear.tick(dt, attending: panelOpen)
         startleCooldown -= dt
         if attention { sinceInteraction = 0 }
@@ -1727,6 +1749,93 @@ return CGRect(x: pos.x - H * 0.45, y: pos.y + altitude - 4, width: H * 0.9, heig
         } else {
             emote.opacity = 0
         }
+    }
+
+    /// One frame of being the player in a game: her real body, posed by what the game says she is doing.
+    private func perform(_ act: ArcadePuppet, dt: CGFloat) {
+        let m = sheet.motion
+        mode = .idle
+        altitude = 0
+        pos = act.feet
+        facing = act.facing >= 0 ? 1 : -1
+        var p = Pose()
+        p.smile = 0.7
+        if act.carrying {
+            // Window Breaker: the paddle held high, eyes on the ball, quick feet underneath.
+            puppetStride += dt * min(abs(act.speed), 700) / 9
+            let s = abs(act.speed) > 40 ? sin(puppetStride) : 0
+            p.yaw = 0.25 * max(-1, min(1, act.speed / 400))
+            p.armOutL = 2.85
+            p.armOutR = 2.85
+            p.elbowL = 0.08
+            p.elbowR = 0.08
+            p.legL = 0.5 * s
+            p.legR = -0.5 * s
+            p.kneeL = 0.6 * max(0, s)
+            p.kneeR = 0.6 * max(0, -s)
+            p.tilt = 0.08 * max(-1, min(1, act.speed / 500))
+            p.headPitch = -0.3
+            p.bodyY = 1.5 * abs(s)
+        } else if act.airborne {
+            p.yaw = facing * 1.0
+            if act.rising {
+                p.armOutL = 2.1
+                p.armOutR = 2.1
+                p.kneeL = 0.9
+                p.kneeR = 0.5
+                p.legL = 0.5
+                p.squash = 1.06
+                p.mouthOpen = 0.3
+            } else {
+                p.armOutL = 1.3
+                p.armOutR = 1.3
+                p.kneeL = 0.25
+                p.kneeR = 0.25
+                p.legL = 0.2
+                p.legR = -0.15
+            }
+            p.headPitch = act.rising ? -0.2 : 0.1
+        } else if abs(act.speed) > 40 {
+            puppetStride += dt * abs(act.speed) / 9
+            p = Moves.travelPose("run", phase: puppetStride, t: t, m: m, L: body.legLength)
+            p.yaw = facing * 1.1
+        } else {
+            p.yaw = facing * 0.45
+            p.bodyY = 1.2 * sin(t * 2.4)
+        }
+        if act.cheering {
+            p = Pose()
+            p.prop = 3
+            p.yaw = 0.2 * facing
+            p.armOutR = 2.9
+            p.elbowR = 0.05
+            p.armOutL = 0.5
+            p.elbowL = 1.6
+            p.lean = -0.08
+            p.headPitch = -0.2
+            p.smile = 1
+            p.bodyY = 3 + 1.5 * sin(t * 6)
+        } else if act.swing > 0 {
+            // The joystick drawn and swept down in front of her.
+            p.prop = 3
+            p.armR = 2.5 - 2.0 * act.swing
+            p.armOutR = 0.4 * (1 - act.swing)
+            p.elbowR = 0.15
+            p.twist = 0.35 * (act.swing - 0.4)
+            p.lean += 0.1 * act.swing
+        }
+        if Int(t * 5) % 17 == 0 { p.eyeOpen = 0.06 }
+        pose.approach(p, 1 - exp(-24 * dt))
+        pose.eyeOpen = p.eyeOpen
+        pose.roll = 0
+        pose.spin = 0
+        pose.prop = p.prop
+        node.opacity = act.blink && Int(t * 12) % 2 == 0 ? 0.35 : 1
+        body.setStorm(0.25)
+        body.apply(pose: pose, clip: act.airborne ? "jump" : (abs(act.speed) > 40 ? "run" : "idle"), dt: dt,
+                   showProp: false, speed: abs(act.speed), time: t)
+        shadow.opacity = 0
+        emote.opacity = 0
     }
 
     func syncNode(origin: CGPoint) {

@@ -94,7 +94,7 @@ enum ArcadeArt {
         return node
     }
 
-    /// Joy as a small sprite, feet at the origin: indigo tunic, cream face, gold boots and belt,
+    /// A small drawn Joy, used only when the real one is not on the stage (the checks). Feet at the origin: indigo tunic, cream face, gold boots and belt,
     /// and the joystick she carries like a sword, its cherry-red ball over her shoulder.
     static func joy() -> SKNode {
         let root = SKNode()
@@ -158,6 +158,13 @@ class ArcadeScene: SKScene {
     private(set) var halted = false
     var onLeave: (() -> Void)?
     var onEvent: ((ArcadeEvent) -> Void)?
+    /// How tall the player is. The real Joy is about a hundred points; the stand-in sprite is smaller.
+    let hero: CGFloat
+    /// True when nobody real is playing (the checks): a small drawn Joy stands in.
+    let standIn: Bool
+    /// What the real Joy should be doing this frame. She is the player: the stage draws her from this.
+    var puppet: ArcadePuppet?
+    var onPuppet: ((ArcadePuppet?) -> Void)?
 
     let world = SKNode()                 // everything that belongs to the level
     private let scoreLabel = ArcadeArt.label("", size: 15)
@@ -176,7 +183,9 @@ class ArcadeScene: SKScene {
         static let x: UInt16 = 7, f: UInt16 = 3, p: UInt16 = 35, m: UInt16 = 46
     }
 
-    init(game: ArcadeGame, desk: [DeskWindow], size: CGSize, floorY: CGFloat, hostName: String) {
+    init(game: ArcadeGame, desk: [DeskWindow], size: CGSize, floorY: CGFloat, hostName: String, hero: CGFloat? = nil) {
+        self.hero = hero ?? 46
+        self.standIn = hero == nil
         self.game = game
         self.desk = desk
         self.field = CGRect(origin: .zero, size: size)
@@ -312,6 +321,7 @@ class ArcadeScene: SKScene {
         let dt = lastTime == 0 ? 1.0 / 60 : min(1.0 / 30, currentTime - lastTime)
         lastTime = currentTime
         if !halted && !over { step(CGFloat(dt)) }
+        onPuppet?(puppet)
         pressed.removeAll()
         refreshBar()
     }
@@ -445,17 +455,21 @@ final class ClimbScene: ArcadeScene {
         door = SKNode()
         door.position = level.door
         door.zPosition = 6
-        door.addChild(ArcadeArt.box(CGRect(x: -19, y: 0, width: 38, height: 54), ArcadeArt.gold, corner: 8))
-        door.addChild(ArcadeArt.box(CGRect(x: -14, y: 0, width: 28, height: 48), ArcadeArt.ink, corner: 6))
-        let knob = SKShapeNode(circleOfRadius: 2.5)
+        // A door she can actually walk through: a little taller than she is.
+        let tall = hero * 1.18
+        let wide = hero * 0.74
+        door.addChild(ArcadeArt.box(CGRect(x: -wide / 2 - 5, y: 0, width: wide + 10, height: tall + 5), ArcadeArt.gold, corner: 10))
+        door.addChild(ArcadeArt.box(CGRect(x: -wide / 2, y: 0, width: wide, height: tall), ArcadeArt.ink, corner: 7))
+        let knob = SKShapeNode(circleOfRadius: 3)
         knob.fillColor = ArcadeArt.gold
         knob.strokeColor = .clear
-        knob.position = CGPoint(x: 8, y: 22)
+        knob.position = CGPoint(x: wide * 0.3, y: tall * 0.45)
         door.addChild(knob)
         world.addChild(door)
 
         player = ArcadeArt.joy()
         player.zPosition = 20
+        player.isHidden = !standIn
         world.addChild(player)
         place()
         clock = 0
@@ -542,12 +556,13 @@ final class ClimbScene: ArcadeScene {
         if safe > 0 || between > 0 { return }
         lives -= 1
         sound("Basso", volume: 0.5)
-        burst(at: CGPoint(x: pos.x, y: pos.y + 20), color: ArcadeArt.cherry, count: 12)
+        burst(at: CGPoint(x: pos.x, y: pos.y + hero * 0.5), color: ArcadeArt.cherry, count: 12)
         onEvent?(.hurt)
         for roller in rollers { roller.node.removeFromParent() }
         rollers = []
         if lives <= 0 {
             player.isHidden = true
+            puppet = ArcadePuppet(feet: CGPoint(x: pos.x, y: floorY), facing: facing)
             finish()
         } else {
             place()
@@ -557,6 +572,9 @@ final class ClimbScene: ArcadeScene {
     override func step(_ dt: CGFloat) {
         if between > 0 {
             between -= dt
+            puppet?.cheering = true
+            puppet?.speed = 0
+            puppet?.airborne = false
             if between <= 0 {
                 stage += 1
                 build()
@@ -620,7 +638,7 @@ final class ClimbScene: ArcadeScene {
         // Coins.
         for index in coins.indices.reversed() {
             let coin = coins[index]
-            if abs(coin.position.x - pos.x) < 22 && abs(coin.position.y - (pos.y + 20)) < 30 {
+            if abs(coin.position.x - pos.x) < 14 + hero * 0.22 && abs(coin.position.y - (pos.y + hero * 0.5)) < 12 + hero * 0.5 {
                 score += 50
                 sound("Tink")
                 pop("+50", at: coin.position)
@@ -670,21 +688,22 @@ final class ClimbScene: ArcadeScene {
             roller.node.position = roller.pos
 
             let dx = roller.pos.x - pos.x
-            let dy = roller.pos.y - (pos.y + 20)
-            if !gone && swing > 0 && dx * facing > -12 && dx * facing < 64 && abs(dy) < 42 {
+            let dy = roller.pos.y - (pos.y + hero * 0.45)
+            let reach = 40 + hero * 0.55
+            if !gone && swing > 0 && dx * facing > -12 && dx * facing < reach && abs(dy) < 22 + hero * 0.45 {
                 score += 150
                 sound("Glass", volume: 0.3)
                 pop("+150", at: roller.pos)
                 burst(at: roller.pos, color: roller.flying ? .white : ArcadeArt.tint(Int(roller.pos.x)))
                 gone = true
-            } else if !gone && hypot(dx, dy) < 27 {
+            } else if !gone && abs(dx) < 13 + hero * 0.2 && abs(dy) < 13 + hero * 0.42 {
                 hurt()
                 return
-            } else if !gone && !roller.cleared && !roller.flying && !grounded && abs(dx) < 16 && dy < -18 && dy > -110 {
+            } else if !gone && !roller.cleared && !roller.flying && !grounded && abs(dx) < 16 && dy < -(13 + hero * 0.42) && dy > -(110 + hero * 0.5) {
                 // Sailing clean over one, the old way.
                 roller.cleared = true
                 score += 100
-                pop("+100", at: CGPoint(x: pos.x, y: pos.y + 60))
+                pop("+100", at: CGPoint(x: pos.x, y: pos.y + hero + 16))
                 sound("Ping", volume: 0.3)
             }
             if gone {
@@ -708,7 +727,11 @@ final class ClimbScene: ArcadeScene {
             rollers = []
         }
 
-        // How she looks doing it.
+        // What the real Joy does on the stage: exactly this.
+        puppet = ArcadePuppet(feet: pos, facing: facing, speed: grounded ? vel.dx : 0, airborne: !grounded, rising: vel.dy > 0,
+                              swing: swing > 0 ? 1 - swing / 0.22 : 0, blink: safe > 0, carrying: false, cheering: between > 0)
+
+        // The stand-in sprite, when nobody real is playing.
         player.position = pos
         player.xScale = facing
         player.alpha = safe > 0 && Int(clock * 12) % 2 == 0 ? 0.35 : 1
@@ -760,7 +783,8 @@ final class BreakerScene: ArcadeScene {
     private var between: CGFloat = 0
     private let radius: CGFloat = 8
 
-    private var paddleTop: CGFloat { floorY + 78 }
+    /// She holds the paddle over her head, so it sits just above her raised hands.
+    private var paddleTop: CGFloat { floorY + max(78, hero * 1.1 + 14) }
 
     /// Where things are, for the checks.
     var probe: (ballX: CGFloat, ballY: CGFloat, paddleX: CGFloat, bricks: Int, balls: Int) {
@@ -801,10 +825,11 @@ final class BreakerScene: ArcadeScene {
         paddle.removeFromParent()
         paddleBar = ArcadeArt.box(CGRect(x: -width / 2, y: -14, width: width, height: 14), ArcadeArt.gold, corner: 7)
         paddle.addChild(paddleBar)
-        let joy = ArcadeArt.joy()
-        joy.position = CGPoint(x: 0, y: -14 - 44)
-        joy.setScale(1.0)
-        paddle.addChild(joy)
+        if standIn {
+            let joy = ArcadeArt.joy()
+            joy.position = CGPoint(x: 0, y: -14 - 44)
+            paddle.addChild(joy)
+        }
         paddle.zPosition = 20
         world.addChild(paddle)
         addBall()
@@ -920,6 +945,8 @@ final class BreakerScene: ArcadeScene {
     override func step(_ dt: CGFloat) {
         if between > 0 {
             between -= dt
+            puppet?.cheering = true
+            puppet?.speed = 0
             if between <= 0 {
                 stage += 1
                 build()
@@ -938,8 +965,12 @@ final class BreakerScene: ArcadeScene {
         if keys.contains(Key.left) || keys.contains(Key.a) { targetX -= 760 * dt }
         if keys.contains(Key.right) || keys.contains(Key.d) { targetX += 760 * dt }
         targetX = min(field.maxX - width / 2 - 6, max(field.minX + width / 2 + 6, targetX))
+        let before = paddleX
         paddleX += (targetX - paddleX) * min(1, dt * 20)
         paddle.position = CGPoint(x: paddleX, y: paddleTop)
+        let moving = (paddleX - before) / max(dt, 0.001)
+        puppet = ArcadePuppet(feet: CGPoint(x: paddleX, y: floorY), facing: moving >= 0 ? 1 : -1, speed: moving,
+                              airborne: false, rising: false, swing: 0, blink: false, carrying: true, cheering: false)
         if pressed.contains(Key.space) { launch() }
 
         let ceiling = field.maxY - 96
@@ -1080,9 +1111,19 @@ final class ArcadeController: NSObject, NSWindowDelegate {
         let size = screen.frame.size
         let floor = screen.visibleFrame.minY - screen.frame.minY
         let name = host?.sheet.name ?? "Joy"
+        // With Joy on the stage she is the player, at her real size. Without her, a drawn stand-in plays.
+        let hero: CGFloat? = host.map { $0.sheet.look.height }
         let made: ArcadeScene = game == .climb
-            ? ClimbScene(game: game, desk: desk, size: size, floorY: floor, hostName: name)
-            : BreakerScene(game: game, desk: desk, size: size, floorY: floor, hostName: name)
+            ? ClimbScene(game: game, desk: desk, size: size, floorY: floor, hostName: name, hero: hero)
+            : BreakerScene(game: game, desk: desk, size: size, floorY: floor, hostName: name, hero: hero)
+        let corner = screen.frame.origin
+        made.onPuppet = { [weak host] act in
+            guard var act else { return }
+            // The game counts from the corner of its screen; the stage counts from the corner of the desktop.
+            act.feet.x += corner.x
+            act.feet.y += corner.y
+            host?.puppet = act
+        }
         made.onLeave = { [weak self] in
             Task { @MainActor [weak self] in self?.stop() }
         }
@@ -1125,24 +1166,23 @@ final class ArcadeController: NSObject, NSWindowDelegate {
         window = nil
         scene = nil
         playing = nil
+        host?.puppet = nil
         host?.playing = false
         host = nil
         onClosed?()
     }
 
-    /// Joy watches from the stage and has something to say.
+    /// Joy is the one playing, and she has something to say about how it is going.
     private func react(to event: ArcadeEvent) {
         guard let host else { return }
         switch event {
         case .started:
             host.pendingSpeech = ["Your desktop, my rules. Go!", "Player one, ready!", "Let's see those reflexes."].randomElement()
         case .hurt:
-            host.wince()
+            host.pendingSpeech = ["Ow. Okay.", "That one's on me.", "Shake it off."].randomElement()
         case .cleared:
-            host.cheer()
             host.pendingSpeech = ["Clean run!", "That's a clear. Next one's meaner.", "Textbook."].randomElement()
         case .over(let score, let best):
-            if best { host.cheer() }
             host.pendingSpeech = best ? "New best: \(score). Put that on the cabinet." : "\(score). Good run. Again?"
         }
     }

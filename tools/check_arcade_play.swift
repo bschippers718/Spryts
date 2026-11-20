@@ -10,8 +10,10 @@ enum Leaderboard {
     static func add(_ entry: ScoreEntry) { added.append(entry) }
 }
 final class SprytCharacter {
-    struct Sheet { var name = "Joy" }
+    struct Look { var height: CGFloat = 100 }
+    struct Sheet { var name = "Joy"; var look = Look() }
     var sheet = Sheet()
+    var puppet: ArcadePuppet?
     var playing = false
     var pendingSpeech: String?
     func wake() {}
@@ -168,6 +170,43 @@ struct ArcadePlayChecks {
         expect(breaker.over && breaker.lives == 0, "leaving the paddle in the corner ends the game")
         expect(Leaderboard.added.last?.game == "joy-breaker" && Leaderboard.added.last?.score == breaker.score, "and the score is recorded")
         _ = snapshot(breaker, in: view, to: "breaker-over.png", folder: folder)
+
+        // MARK: The real Joy as the player
+        // At her real size the game draws no stand-in and tells the stage exactly what she is doing.
+        let real = ClimbScene(game: .climb, desk: desk, size: size, floorY: floorY, hostName: "Joy", hero: 100)
+        var acts: [ArcadePuppet] = []
+        real.onPuppet = { if let act = $0 { acts.append(act) } }
+        view.presentScene(real)
+        tick(real, 0.3)
+        let stood = acts.last
+        expect(stood?.feet == CGPoint(x: real.probe.x, y: real.probe.y) && stood?.airborne == false && stood?.carrying == false,
+               "the real Joy stands where the game says the player is")
+        tick(real, 0.5, holding: [ArcadeScene.Key.right])
+        expect((acts.last?.speed ?? 0) > 150 && acts.last?.facing == 1, "she runs when the player runs")
+        tick(real, 1.0 / 60, holding: [ArcadeScene.Key.space], tap: [ArcadeScene.Key.space])
+        tick(real, 0.1, holding: [ArcadeScene.Key.space])
+        expect(acts.last?.airborne == true && acts.last?.rising == true, "she jumps when the player jumps")
+        tick(real, 1.0)
+        tick(real, 1.0 / 60, tap: [ArcadeScene.Key.x])
+        tick(real, 0.08)
+        expect((acts.last?.swing ?? 0) > 0.2, "she swings the joystick when the player swings")
+        var jumpPeak: CGFloat = 0
+        tick(real, 1.0)
+        tick(real, 1.0 / 60, holding: [ArcadeScene.Key.space], tap: [ArcadeScene.Key.space])
+        for _ in 0..<70 {
+            tick(real, 1.0 / 60, holding: [ArcadeScene.Key.space])
+            jumpPeak = max(jumpPeak, (acts.last?.feet.y ?? 0) - floorY)
+        }
+        expect(jumpPeak > ArcadeLevels.rise + 15, "at full size she still clears the tallest step")
+        _ = snapshot(real, in: view, to: "climb-real.png", folder: folder)
+        let carry = BreakerScene(game: .breaker, desk: desk, size: size, floorY: floorY, hostName: "Joy", hero: 100)
+        acts = []
+        carry.onPuppet = { if let act = $0 { acts.append(act) } }
+        view.presentScene(carry)
+        tick(carry, 0.4, holding: [ArcadeScene.Key.right])
+        expect(acts.last?.carrying == true && acts.last?.feet.y == floorY && abs((acts.last?.feet.x ?? 0) - carry.probe.paddleX) < 1,
+               "in Window Breaker she carries the paddle, standing under it")
+        expect((carry.probe.ballY - floorY) > 100, "and the paddle sits above her head")
 
         print("")
         print(failures.isEmpty ? "ARCADE PLAY CHECK OK: \(checks) checks" : "ARCADE PLAY CHECK FAILED: \(failures.count) of \(checks)")

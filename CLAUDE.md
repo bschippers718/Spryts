@@ -57,6 +57,8 @@ Joy's games (`Arcade.swift`) are a see-through layer over the screen whose level
 - Esc always leaves at once. Losing focus pauses. A game starts only when the person asks for one.
 - Every level must be finishable on any desktop, including an empty one: `ArcadeLevels` is pure, and
   `tools/check-arcade.command` proves it on random desktops and plays both games with scripted keys. Run it after any change.
+- The player is the real Joy. A scene reports an `ArcadePuppet` every frame and `SprytCharacter.puppet` draws her from
+  it; never draw a second, smaller Joy in a game. The drawn stand-in exists only for the checks, which have no stage.
 - Joy has no tools on either engine, like a companion. Games are started by the app's buttons, never by the model.
 - A new game is an `ArcadeGame` case, a scene in `Arcade.swift`, a card in her arcade and a line in her prompt.
 

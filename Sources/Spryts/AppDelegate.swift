@@ -807,7 +807,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         for character in characters {
             let id = character.sheet.id
             guard let panel = panels[id] else { continue }
-            let over = grabbed == nil && character.hitRect.contains(mouse)
+            let over = grabbed == nil && character.puppet == nil && character.hitRect.contains(mouse)
             if over { overAny = true }
             // A character in the wings takes clicks but doesn't open its popup on hover.
             hover[id] = over && !character.isOffstage ? (hover[id] ?? 0) + dt : 0
@@ -874,7 +874,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func pointerDown(at point: CGPoint) {
         // While a game is on, anything it throws gets first refusal on a click.
         if let game, game.click(at: point) { return }
-        for character in characters.reversed() where character.hitRect.contains(point) {
+        for character in characters.reversed() where character.puppet == nil && character.hitRect.contains(point) {
             if character.isOffstage {
                 // Clicking a character in the wings brings it back.
                 character.returnToStage(world: world, others: characters)

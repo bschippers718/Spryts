@@ -41,6 +41,19 @@ struct Brick: Equatable {
     var hits: Int            // 2 for a window's title bar row
 }
 
+/// What a game asks of the real character on the stage, every frame, while she is the one playing.
+struct ArcadePuppet: Equatable {
+    var feet: CGPoint            // where she stands, in the game's coordinates
+    var facing: CGFloat = 1
+    var speed: CGFloat = 0       // along the ground, points per second
+    var airborne = false
+    var rising = false
+    var swing: CGFloat = 0       // 0 not swinging ... 1 the end of the arc
+    var blink = false            // just hurt: she flickers
+    var carrying = false         // holding the paddle over her head
+    var cheering = false
+}
+
 /// A small repeatable random source, so a level can be rebuilt and checked.
 struct ArcadeDice {
     private var state: UInt64
