@@ -408,7 +408,61 @@ final class SiftEngine {
           timestamp: String(post.timestamp || "")
         })));
       },
-      onFeed() { return Boolean(settings.enabled && isActiveFeedPath(location.pathname, settings.feedUrl)); }
+      onFeed() { return Boolean(settings.enabled && isActiveFeedPath(location.pathname, settings.feedUrl)); },
+      // Can Sift read this page? Counts and names only: never a post's words, never who wrote it.
+      async health() {
+        const count = (selector) => document.querySelectorAll(selector).length;
+        const status = () => String(document.querySelector(".sift-status-bar span")?.textContent || "").slice(0, 60);
+        const sign = (node) => {
+          const element = node && node.nodeType === 1 ? node : node?.parentElement;
+          if (!element) { return "?"; }
+          const id = String(element.getAttribute("data-testid") || "").replace(/[^A-Za-z._]/g, "").slice(0, 24);
+          return `${element.tagName.toLowerCase()}${id ? "#" + id : ""}${element.getAttribute("role") ? "@" + element.getAttribute("role") : ""}`;
+        };
+        const report = {
+          onFeed: this.onFeed(),
+          articles: count('article[data-testid="tweet"]'),
+          read: count("article[data-sift-post-key]"),
+          anyArticle: count("article"),
+          roleArticle: count('[role="article"]'),
+          cells: count('[data-testid="cellInnerDiv"]'),
+          column: count('[data-testid="primaryColumn"]'),
+          banner: String(document.querySelector(".sift-diagnostic")?.dataset.siftProblem || ""),
+          statusBefore: status(),
+          scrolling: Boolean(isScrolling)
+        };
+        // How busy is the page? Sift waits for a quiet moment before it filters.
+        const busy = new Map();
+        let changes = 0;
+        const watcher = new MutationObserver((records) => {
+          for (const record of records) {
+            if (isSiftNode(record.target)) { continue; }
+            changes += 1;
+            const key = sign(record.target);
+            busy.set(key, (busy.get(key) || 0) + 1);
+          }
+        });
+        watcher.observe(document.documentElement, { childList: true, subtree: true });
+        await new Promise((done) => setTimeout(done, 1500));
+        watcher.disconnect();
+        report.changes = changes;
+        report.busiest = [...busy.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([key, n]) => `${key} x${n}`);
+        // One pass of Sift's own filter, to learn whether it finishes.
+        try { isScrolling = false; applySettings(); report.error = ""; }
+        catch (error) {
+          report.error = `${String(error).slice(0, 200)} | ${String(error?.stack || "").split("\n").slice(0, 4).join(" < ").slice(0, 400)}`;
+        }
+        report.readAfter = count("article[data-sift-post-key]");
+        report.statusAfter = status();
+        const names = new Set();
+        for (const element of document.querySelectorAll("main [data-testid]")) {
+          const name = String(element.getAttribute("data-testid") || "");
+          if (/^[A-Za-z._-]{1,40}$/.test(name) && !name.startsWith("UserAvatar-Container-")) { names.add(name); }
+          if (names.size >= 80) { break; }
+        }
+        report.names = [...names];
+        return JSON.stringify(report);
+      }
     };
     """#
 }

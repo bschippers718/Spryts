@@ -162,6 +162,7 @@ struct SiftChecks {
 
         // MARK: The real web view, with the real script, on a stand-in page
         _ = NSApplication.shared
+        SiftWebController.keepsReports = false
         let live = SiftStore(file: root.appendingPathComponent("sift-live.json"))
         let controller = SiftWebController(store: live)
         expect(controller.engine != nil && controller.engineProblem == nil, "the web view has Sift loaded")
@@ -211,6 +212,31 @@ struct SiftChecks {
         _ = await page(controller.webView, "window.__popup.close(); return 1")
         await pause(0.8)
         expect(!controller.signingIn, "and it closes itself when it is done")
+
+        // X fills its timeline after the page loads, so Sift has to notice posts that arrive later.
+        _ = await page(controller.webView, """
+            const cell = document.querySelector('[data-testid="cellInnerDiv"]');
+            const late = cell.cloneNode(true);
+            late.querySelectorAll('.sift-placeholder, .sift-post-preferences').forEach((e) => e.remove());
+            const post = late.querySelector('article');
+            post.removeAttribute('data-sift-post-key'); post.className = ''; post.id = 'late';
+            post.querySelectorAll('a[href*="/status/"]').forEach((a) => a.setAttribute('href', '/latecomer/status/999'));
+            setTimeout(() => cell.parentElement.appendChild(late), 300);
+            return 1
+            """)
+        await pause(1.5)
+        let late = await page(controller.webView, "return document.getElementById('late')?.dataset.siftPostKey || 'unread'")
+        expect(late == "/latecomer/status/999", "a post that arrives after the page loaded is read too (got \(late))")
+
+        let report = await controller.readingReport() ?? [:]
+        expect(SiftWebController.reads(report) && (report["error"] as? String) == "",
+               "the page reports that Sift is reading every post on it")
+        expect(!"\(report)".contains("memecoin") && !"\(report)".contains("latecomer"), "and that report holds no post or account")
+        expect(!SiftWebController.reads(["articles": 6, "read": 0, "error": ""])
+               && !SiftWebController.reads(["articles": 0, "cells": 9, "error": ""])
+               && !SiftWebController.reads(["articles": 6, "read": 6, "error": "TypeError"])
+               && SiftWebController.reads(["articles": 0, "cells": 0, "error": ""]),
+               "posts on the page that Sift has not read count as a problem; an empty timeline does not")
 
         live.update { $0.enabled = false }
         await pause(1.2)

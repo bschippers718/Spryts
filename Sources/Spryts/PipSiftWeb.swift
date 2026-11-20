@@ -325,6 +325,63 @@ final class SiftWebController: NSObject, ObservableObject, WKNavigationDelegate,
         guard webView === self.webView else { return }
         problem = nil
         located(webView.url)
+        checkReading()
+    }
+
+    // MARK: Can Sift read the page
+
+    private var readingCheck = 0
+    /// The last report is kept beside the other logs. The checks turn this off.
+    static var keepsReports = true
+    static let cannotRead = "Sift can’t read this page, so posts are unfiltered."
+
+    /// A while after the feed loads, asks the page whether Sift is reading the posts on it.
+    /// The answer is counts and element names, never a post. It is kept in one small file for fixing a bad page.
+    private func checkReading() {
+        readingCheck += 1
+        let mine = readingCheck
+        guard engine != nil else { return }
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 9_000_000_000)
+            guard let self, self.readingCheck == mine, self.onFeed, !self.signedOut else { return }
+            guard var report = await self.readingReport(), self.readingCheck == mine else { return }
+            let healthy = SiftWebController.reads(report)
+            report["healthy"] = healthy
+            if !healthy {
+                self.problem = SiftWebController.cannotRead
+            } else if self.problem == SiftWebController.cannotRead {
+                self.problem = nil
+            }
+            if SiftWebController.keepsReports,
+               let data = try? JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys]) {
+                try? data.write(to: Config.home.appendingPathComponent("sift-health.log"), options: .atomic)
+            }
+        }
+    }
+
+    /// What the page says about itself: how many posts are on it and how many Sift has read.
+    func readingReport() async -> [String: Any]? {
+        guard engine != nil else { return nil }
+        let json: String? = await withCheckedContinuation { continuation in
+            webView.callAsyncJavaScript("return globalThis.__siftBridge ? await globalThis.__siftBridge.health() : '';",
+                                        arguments: [:], in: nil, in: world) { result in
+                if case .success(let value) = result, let text = value as? String, !text.isEmpty {
+                    continuation.resume(returning: text)
+                } else {
+                    continuation.resume(returning: nil)
+                }
+            }
+        }
+        guard let json, json.utf8.count <= 20_000 else { return nil }
+        return try? JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any]
+    }
+
+    /// Sift is reading the page when its own pass finishes and every post on the page went through it.
+    static func reads(_ report: [String: Any]) -> Bool {
+        func number(_ key: String) -> Int { (report[key] as? NSNumber)?.intValue ?? 0 }
+        if let error = report["error"] as? String, !error.isEmpty { return false }
+        if number("articles") > 0 { return number("read") >= number("articles") }
+        return number("cells") < 3          // an empty timeline is fine; a full one with no posts Sift knows is not
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
