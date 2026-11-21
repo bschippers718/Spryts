@@ -69,18 +69,138 @@ enum ArcadeArt {
     static let ink = NSColor(hex: "#16142B")
     static let font = "Menlo-Bold"
 
+    private static let palette: [NSColor] = [
+        "#5AC8FA", "#FF9F0A", "#30D158", "#BF5AF2", "#FF6482", "#FFD60A", "#64D2FF", "#AC8E68"
+    ].map { NSColor(hex: $0) }
+
     /// A colour for each window, steady for as long as the window lives.
     static func tint(_ window: Int) -> NSColor {
-        let palette = ["#5AC8FA", "#FF9F0A", "#30D158", "#BF5AF2", "#FF6482", "#FFD60A", "#64D2FF", "#AC8E68"]
-        return NSColor(hex: palette[abs(window) % palette.count])
+        palette[abs(window) % palette.count]
     }
 
-    static func box(_ rect: CGRect, _ color: NSColor, corner: CGFloat = 0) -> SKShapeNode {
-        let node = SKShapeNode(rect: rect, cornerRadius: corner)
-        node.fillColor = color
-        node.strokeColor = .clear
-        node.lineWidth = 0
-        node.isAntialiased = corner > 0
+    // MARK: Shared GPU textures (SKSpriteNode batching avoids expensive per-node SKShapeNode tessellation)
+
+    private static func makeTexture(size: CGSize, scale: CGFloat = 2, draw: (CGContext) -> Void) -> SKTexture {
+        let w = max(2, Int((size.width * scale).rounded()))
+        let h = max(2, Int((size.height * scale).rounded()))
+        let space = CGColorSpaceCreateDeviceRGB()
+        guard let ctx = CGContext(
+            data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0,
+            space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else {
+            return SKTexture()
+        }
+        ctx.scaleBy(x: scale, y: scale)
+        ctx.setAllowsAntialiasing(true)
+        ctx.setShouldAntialias(true)
+        draw(ctx)
+        guard let cg = ctx.makeImage() else { return SKTexture() }
+        let tex = SKTexture(cgImage: cg)
+        tex.filteringMode = .linear
+        return tex
+    }
+
+    /// 9-slice solid white rounded rectangle; tinted per sprite so SpriteKit batches all boxes in one draw call.
+    static let roundedFill: SKTexture = makeTexture(size: CGSize(width: 24, height: 24)) { ctx in
+        let path = CGPath(roundedRect: CGRect(x: 0, y: 0, width: 24, height: 24), cornerWidth: 6, cornerHeight: 6, transform: nil)
+        ctx.setFillColor(NSColor.white.cgColor)
+        ctx.addPath(path)
+        ctx.fillPath()
+    }
+
+    /// 9-slice hollow white rounded border for bricks and window outlines.
+    static let roundedStrokeThin: SKTexture = makeTexture(size: CGSize(width: 28, height: 28)) { ctx in
+        let path = CGPath(roundedRect: CGRect(x: 1, y: 1, width: 26, height: 26), cornerWidth: 6, cornerHeight: 6, transform: nil)
+        ctx.setStrokeColor(NSColor.white.cgColor)
+        ctx.setLineWidth(1.5)
+        ctx.addPath(path)
+        ctx.strokePath()
+    }
+
+    static let roundedStrokeThick: SKTexture = makeTexture(size: CGSize(width: 28, height: 28)) { ctx in
+        let path = CGPath(roundedRect: CGRect(x: 1.5, y: 1.5, width: 25, height: 25), cornerWidth: 6, cornerHeight: 6, transform: nil)
+        ctx.setStrokeColor(NSColor.white.cgColor)
+        ctx.setLineWidth(2.5)
+        ctx.addPath(path)
+        ctx.strokePath()
+    }
+
+    static let coinTexture: SKTexture = makeTexture(size: CGSize(width: 20, height: 20)) { ctx in
+        let rect = CGRect(x: 2, y: 2, width: 16, height: 16)
+        ctx.setFillColor(gold.cgColor)
+        ctx.fillEllipse(in: rect)
+        ctx.setStrokeColor(NSColor(hex: "#B07A12").cgColor)
+        ctx.setLineWidth(2)
+        ctx.strokeEllipse(in: rect)
+    }
+
+    static let ballTexture: SKTexture = makeTexture(size: CGSize(width: 20, height: 20)) { ctx in
+        let rect = CGRect(x: 2, y: 2, width: 16, height: 16)
+        ctx.setFillColor(cherry.cgColor)
+        ctx.fillEllipse(in: rect)
+        ctx.setStrokeColor(NSColor.white.cgColor)
+        ctx.setLineWidth(1.5)
+        ctx.strokeEllipse(in: rect)
+    }
+
+    static let beachBallTexture: SKTexture = makeTexture(size: CGSize(width: 28, height: 28)) { ctx in
+        let center = CGPoint(x: 14, y: 14)
+        let colors = ["#FF453A", "#FFD60A", "#30D158", "#0A84FF"].map { NSColor(hex: $0).cgColor }
+        for (index, color) in colors.enumerated() {
+            ctx.beginPath()
+            ctx.move(to: center)
+            ctx.addArc(center: center, radius: 13, startAngle: CGFloat(index) * .pi / 2, endAngle: CGFloat(index + 1) * .pi / 2, clockwise: false)
+            ctx.closePath()
+            ctx.setFillColor(color)
+            ctx.fillPath()
+        }
+    }
+
+    static let cursorTexture: SKTexture = makeTexture(size: CGSize(width: 30, height: 24)) { ctx in
+        let path = CGMutablePath()
+        path.move(to: CGPoint(x: 28, y: 12))
+        path.addLine(to: CGPoint(x: 4, y: 21))
+        path.addLine(to: CGPoint(x: 9, y: 12))
+        path.addLine(to: CGPoint(x: 4, y: 3))
+        path.closeSubpath()
+        ctx.addPath(path)
+        ctx.setFillColor(NSColor.white.cgColor)
+        ctx.fillPath()
+        ctx.addPath(path)
+        ctx.setStrokeColor(ink.cgColor)
+        ctx.setLineWidth(1.5)
+        ctx.strokePath()
+    }
+
+    static let discTexture: SKTexture = makeTexture(size: CGSize(width: 28, height: 28)) { ctx in
+        ctx.setFillColor(NSColor.white.cgColor)
+        ctx.fillEllipse(in: CGRect(x: 1, y: 1, width: 26, height: 26))
+    }
+
+    static func box(_ rect: CGRect, _ color: NSColor, corner: CGFloat = 0) -> SKSpriteNode {
+        let node: SKSpriteNode
+        if corner > 0 {
+            node = SKSpriteNode(texture: roundedFill, color: color, size: rect.size)
+            node.colorBlendFactor = 1.0
+            node.centerRect = CGRect(x: 0.34, y: 0.34, width: 0.32, height: 0.32)
+        } else {
+            node = SKSpriteNode(color: color, size: rect.size)
+        }
+        node.position = CGPoint(x: rect.midX, y: rect.midY)
+        return node
+    }
+
+    static func outlineBox(_ rect: CGRect, _ color: NSColor, thick: Bool = false) -> SKSpriteNode {
+        let node = SKSpriteNode(texture: thick ? roundedStrokeThick : roundedStrokeThin, color: color, size: rect.size)
+        node.colorBlendFactor = 1.0
+        node.centerRect = CGRect(x: 0.34, y: 0.34, width: 0.32, height: 0.32)
+        node.position = CGPoint(x: rect.midX, y: rect.midY)
+        return node
+    }
+
+    static func disc(radius: CGFloat, color: NSColor) -> SKSpriteNode {
+        let node = SKSpriteNode(texture: discTexture, color: color, size: CGSize(width: radius * 2, height: radius * 2))
+        node.colorBlendFactor = 1.0
         return node
     }
 
@@ -103,9 +223,7 @@ enum ArcadeArt {
         stick.position = CGPoint(x: -7, y: 22)
         stick.zRotation = 0.5
         stick.addChild(box(CGRect(x: -1.5, y: 0, width: 3, height: 22), ink))
-        let ball = SKShapeNode(circleOfRadius: 5.5)
-        ball.fillColor = cherry
-        ball.strokeColor = .clear
+        let ball = disc(radius: 5.5, color: cherry)
         ball.position = CGPoint(x: 0, y: 25)
         stick.addChild(ball)
         root.addChild(stick)
@@ -118,20 +236,14 @@ enum ArcadeArt {
         root.addChild(bootR)
         root.addChild(box(CGRect(x: -11, y: 5, width: 22, height: 20), indigo, corner: 6))
         root.addChild(box(CGRect(x: -11, y: 10, width: 22, height: 3), gold))
-        let cap = SKShapeNode(circleOfRadius: 12.5)
-        cap.fillColor = indigo
-        cap.strokeColor = .clear
+        let cap = disc(radius: 12.5, color: indigo)
         cap.position = CGPoint(x: 0, y: 35)
         root.addChild(cap)
-        let face = SKShapeNode(circleOfRadius: 10)
-        face.fillColor = cream
-        face.strokeColor = .clear
+        let face = disc(radius: 10, color: cream)
         face.position = CGPoint(x: 1.5, y: 33)
         root.addChild(face)
         for x in [CGFloat(-1.5), CGFloat(5.5)] {
-            let eye = SKShapeNode(circleOfRadius: 1.8)
-            eye.fillColor = ink
-            eye.strokeColor = .clear
+            let eye = disc(radius: 1.8, color: ink)
             eye.position = CGPoint(x: x, y: 34)
             root.addChild(eye)
         }
@@ -175,6 +287,11 @@ class ArcadeScene: SKScene {
     private var shownScore = -1
     private var shownLives = -1
     private var shownStage = -1
+    private var muted = false
+    private var activeParticles = 0
+    private var activePopups = 0
+    private static let maxParticles = 36
+    private static let maxPopups = 8
 
     enum Key {
         static let left: UInt16 = 123, right: UInt16 = 124, down: UInt16 = 125, up: UInt16 = 126
@@ -195,6 +312,7 @@ class ArcadeScene: SKScene {
         scaleMode = .resizeFill
         backgroundColor = .clear
         best = Leaderboard.best(game.rawValue)
+        muted = UserDefaults.standard.bool(forKey: "gameMuted")
     }
 
     required init?(coder aDecoder: NSCoder) { return nil }
@@ -205,18 +323,17 @@ class ArcadeScene: SKScene {
         shade.zPosition = -20
         addChild(shade)
         for window in desk {
-            let outline = SKShapeNode(rect: window.rect.insetBy(dx: 1, dy: 1), cornerRadius: 10)
-            outline.fillColor = .clear
-            outline.strokeColor = ArcadeArt.tint(window.id).withAlphaComponent(0.35)
-            outline.lineWidth = 1.5
+            let outline = ArcadeArt.outlineBox(window.rect.insetBy(dx: 1, dy: 1), ArcadeArt.tint(window.id).withAlphaComponent(0.38))
             outline.zPosition = -10
             addChild(outline)
         }
         addChild(world)
 
-        let bar = ArcadeArt.box(CGRect(x: -330, y: -19, width: 660, height: 38), ArcadeArt.ink.withAlphaComponent(0.88), corner: 19)
-        bar.strokeColor = ArcadeArt.gold.withAlphaComponent(0.8)
-        bar.lineWidth = 1.5
+        let barRect = CGRect(x: -330, y: -19, width: 660, height: 38)
+        let bar = ArcadeArt.box(barRect, ArcadeArt.ink.withAlphaComponent(0.88), corner: 12)
+        let barBorder = ArcadeArt.outlineBox(barRect, ArcadeArt.gold.withAlphaComponent(0.8))
+        barBorder.position = .zero
+        bar.addChild(barBorder)
         bar.position = CGPoint(x: field.midX, y: field.maxY - 60)
         bar.zPosition = 50
         bar.addChild(scoreLabel)
@@ -241,10 +358,16 @@ class ArcadeScene: SKScene {
     func step(_ dt: CGFloat) {}
     func restart() {}
 
+    func resetWorld() {
+        world.removeAllChildren()
+        activeParticles = 0
+        activePopups = 0
+    }
+
     // MARK: Score, sound, words
 
     func sound(_ name: String, volume: Float = 0.35) {
-        if !UserDefaults.standard.bool(forKey: "gameMuted") { GameSound.play(name, volume: volume) }
+        if !muted { GameSound.play(name, volume: volume) }
     }
 
     private func refreshBar() {
@@ -258,26 +381,39 @@ class ArcadeScene: SKScene {
 
     /// Words that float up from a spot and fade: "+100", "WINDOW CLEARED".
     func pop(_ text: String, at point: CGPoint, color: NSColor? = nil, size: CGFloat = 16) {
+        guard activePopups < ArcadeScene.maxPopups else { return }
+        activePopups += 1
         let label = ArcadeArt.label(text, size: size, color: color ?? ArcadeArt.gold)
         label.position = point
         label.zPosition = 40
         world.addChild(label)
-        label.run(.sequence([.group([.moveBy(x: 0, y: 46, duration: 0.8), .sequence([.wait(forDuration: 0.4), .fadeOut(withDuration: 0.4)])]),
-                             .removeFromParent()]))
+        label.run(.sequence([
+            .group([.moveBy(x: 0, y: 46, duration: 0.75),
+                    .sequence([.wait(forDuration: 0.35), .fadeOut(withDuration: 0.4)])]),
+            .run { [weak self] in self?.activePopups = max(0, (self?.activePopups ?? 1) - 1) },
+            .removeFromParent()
+        ]))
     }
 
     /// A few specks flying out from a point.
     func burst(at point: CGPoint, color: NSColor, count: Int = 8) {
-        for _ in 0..<count {
-            let bit = ArcadeArt.box(CGRect(x: -3, y: -3, width: 6, height: 6), color)
+        let room = ArcadeScene.maxParticles - activeParticles
+        let spawnCount = min(count, room)
+        guard spawnCount > 0 else { return }
+        for _ in 0..<spawnCount {
+            activeParticles += 1
+            let bit = SKSpriteNode(color: color, size: CGSize(width: 6, height: 6))
             bit.position = point
             bit.zPosition = 30
             world.addChild(bit)
             let angle = CGFloat.random(in: 0...(2 * .pi))
             let far = CGFloat.random(in: 30...90)
-            bit.run(.sequence([.group([.moveBy(x: cos(angle) * far, y: sin(angle) * far - 30, duration: 0.5),
-                                       .fadeOut(withDuration: 0.5), .rotate(byAngle: 4, duration: 0.5)]),
-                               .removeFromParent()]))
+            bit.run(.sequence([
+                .group([.moveBy(x: cos(angle) * far, y: sin(angle) * far - 30, duration: 0.45),
+                        .fadeOut(withDuration: 0.45), .rotate(byAngle: 4, duration: 0.45)]),
+                .run { [weak self] in self?.activeParticles = max(0, (self?.activeParticles ?? 1) - 1) },
+                .removeFromParent()
+            ]))
         }
     }
 
@@ -286,9 +422,11 @@ class ArcadeScene: SKScene {
         banner.removeAllChildren()
         if lines.isEmpty { return }
         let height = CGFloat(lines.count) * 34 + 44
-        let card = ArcadeArt.box(CGRect(x: -300, y: -height / 2, width: 600, height: height), ArcadeArt.ink.withAlphaComponent(0.92), corner: 22)
-        card.strokeColor = ArcadeArt.gold
-        card.lineWidth = 2
+        let cardRect = CGRect(x: -300, y: -height / 2, width: 600, height: height)
+        let card = ArcadeArt.box(cardRect, ArcadeArt.ink.withAlphaComponent(0.92), corner: 16)
+        let border = ArcadeArt.outlineBox(cardRect, ArcadeArt.gold, thick: true)
+        border.position = .zero
+        card.addChild(border)
         card.position = CGPoint(x: field.midX, y: field.midY + 40)
         for (index, line) in lines.enumerated() {
             let label = ArcadeArt.label(line, size: index == 0 ? 26 : 15, color: index == 0 ? ArcadeArt.gold : .white)
@@ -296,6 +434,14 @@ class ArcadeScene: SKScene {
             card.addChild(label)
         }
         banner.addChild(card)
+    }
+
+    private func syncFrameRate() {
+        let idle = halted || over
+        world.isPaused = idle
+        // Keep a tiny heartbeat so banners paint cleanly, while dropping idle GPU work by ~97%.
+        view?.preferredFramesPerSecond = idle ? 2 : 60
+        if !idle { lastTime = 0 }
     }
 
     func finish() {
@@ -306,6 +452,7 @@ class ArcadeScene: SKScene {
         if isBest { best = score }
         sound(isBest ? "Hero" : "Submarine")
         show(["GAME OVER", "Score \(score)" + (isBest ? "   New best!" : "   Best \(best)"), "Return to play again · Esc to leave"])
+        syncFrameRate()
         onEvent?(.over(score: score, best: isBest))
     }
 
@@ -313,15 +460,19 @@ class ArcadeScene: SKScene {
         if over || halted == stop { return }
         halted = stop
         show(stop ? ["PAUSED", game.controls, "P or click to carry on"] : [])
+        syncFrameRate()
     }
 
     // MARK: The clock and the keys
 
     override func update(_ currentTime: TimeInterval) {
-        let dt = lastTime == 0 ? 1.0 / 60 : min(1.0 / 30, currentTime - lastTime)
+        let rawDt = lastTime == 0 ? 1.0 / 60 : currentTime - lastTime
+        let dt = min(1.0 / 30, max(0, rawDt))
         lastTime = currentTime
-        if !halted && !over { step(CGFloat(dt)) }
-        onPuppet?(puppet)
+        if !halted && !over {
+            step(CGFloat(dt))
+            onPuppet?(puppet)
+        }
         pressed.removeAll()
         refreshBar()
     }
@@ -337,7 +488,7 @@ class ArcadeScene: SKScene {
         pressed.insert(code)
         if code == Key.p { halt(!halted) }
         if code == Key.m {
-            let muted = !UserDefaults.standard.bool(forKey: "gameMuted")
+            muted.toggle()
             UserDefaults.standard.set(muted, forKey: "gameMuted")
         }
         if over && code == Key.enter {
@@ -346,7 +497,8 @@ class ArcadeScene: SKScene {
             lives = 3
             stage = 1
             show([])
-            world.removeAllChildren()
+            resetWorld()
+            syncFrameRate()
             restart()
             onEvent?(.started)
         }
@@ -404,6 +556,7 @@ final class ClimbScene: ArcadeScene {
     private let gravity: CGFloat = 1800
     private let jumpSpeed: CGFloat = 760
     private let runSpeed: CGFloat = 300
+    private static let maxRollers = 9
 
     /// Where the climber is, for the checks.
     var probe: (x: CGFloat, y: CGFloat, grounded: Bool, door: CGPoint) { (pos.x, pos.y, grounded, level.door) }
@@ -419,10 +572,12 @@ final class ClimbScene: ArcadeScene {
     }
 
     private func build() {
-        world.removeAllChildren()
+        resetWorld()
         rollers = []
         coins = []
         level = ArcadeLevels.climb(windows: desk, frame: field, floorY: floorY, seed: seed &+ UInt64(stage))
+        let folderBodyColor = NSColor(hex: "#4FA8F7")
+        let folderTabColor = NSColor(hex: "#7CC1FF")
         for ledge in level.ledges {
             switch ledge.kind {
             case .floor:
@@ -433,22 +588,20 @@ final class ClimbScene: ArcadeScene {
                 edge.zPosition = 5
                 world.addChild(edge)
             case .folder:
-                let body = ArcadeArt.box(CGRect(x: ledge.minX, y: ledge.y - 20, width: ledge.width, height: 20), NSColor(hex: "#4FA8F7"), corner: 5)
+                let body = ArcadeArt.box(CGRect(x: ledge.minX, y: ledge.y - 20, width: ledge.width, height: 20), folderBodyColor, corner: 5)
                 body.zPosition = 5
-                let tab = ArcadeArt.box(CGRect(x: ledge.minX + 6, y: ledge.y - 3, width: 34, height: 7), NSColor(hex: "#7CC1FF"), corner: 3)
+                let tab = ArcadeArt.box(CGRect(x: ledge.minX + 6, y: ledge.y - 3, width: 34, height: 7), folderTabColor, corner: 3)
                 tab.zPosition = 4
                 world.addChild(tab)
                 world.addChild(body)
             }
         }
+        let spinCoin = SKAction.repeatForever(.sequence([.scaleX(to: 0.3, duration: 0.35), .scaleX(to: 1, duration: 0.35)]))
         for point in level.coins {
-            let coin = SKShapeNode(circleOfRadius: 8)
-            coin.fillColor = ArcadeArt.gold
-            coin.strokeColor = NSColor(hex: "#B07A12")
-            coin.lineWidth = 2
+            let coin = SKSpriteNode(texture: ArcadeArt.coinTexture, size: CGSize(width: 18, height: 18))
             coin.position = point
             coin.zPosition = 8
-            coin.run(.repeatForever(.sequence([.scaleX(to: 0.3, duration: 0.35), .scaleX(to: 1, duration: 0.35)])))
+            coin.run(spinCoin)
             world.addChild(coin)
             coins.append(coin)
         }
@@ -460,17 +613,16 @@ final class ClimbScene: ArcadeScene {
         let wide = hero * 0.74
         door.addChild(ArcadeArt.box(CGRect(x: -wide / 2 - 5, y: 0, width: wide + 10, height: tall + 5), ArcadeArt.gold, corner: 10))
         door.addChild(ArcadeArt.box(CGRect(x: -wide / 2, y: 0, width: wide, height: tall), ArcadeArt.ink, corner: 7))
-        let knob = SKShapeNode(circleOfRadius: 3)
-        knob.fillColor = ArcadeArt.gold
-        knob.strokeColor = .clear
+        let knob = ArcadeArt.disc(radius: 3, color: ArcadeArt.gold)
         knob.position = CGPoint(x: wide * 0.3, y: tall * 0.45)
         door.addChild(knob)
         world.addChild(door)
 
-        player = ArcadeArt.joy()
-        player.zPosition = 20
-        player.isHidden = !standIn
-        world.addChild(player)
+        if standIn {
+            player = ArcadeArt.joy()
+            player.zPosition = 20
+            world.addChild(player)
+        }
         place()
         clock = 0
         nextBall = 2.5
@@ -490,20 +642,7 @@ final class ClimbScene: ArcadeScene {
     }
 
     private func spawnBall() {
-        let node = SKNode()
-        // The spinning wait cursor, as a thing you can jump over.
-        let colors = ["#FF453A", "#FFD60A", "#30D158", "#0A84FF"]
-        for (index, hex) in colors.enumerated() {
-            let wedge = SKShapeNode()
-            let path = CGMutablePath()
-            path.move(to: .zero)
-            path.addArc(center: .zero, radius: 13, startAngle: CGFloat(index) * .pi / 2, endAngle: CGFloat(index + 1) * .pi / 2, clockwise: false)
-            path.closeSubpath()
-            wedge.path = path
-            wedge.fillColor = NSColor(hex: hex)
-            wedge.strokeColor = .clear
-            node.addChild(wedge)
-        }
+        let node = SKSpriteNode(texture: ArcadeArt.beachBallTexture, size: CGSize(width: 26, height: 26))
         node.zPosition = 15
         let direction: CGFloat = pos.x < level.door.x ? -1 : 1
         let speed = min(260, 120 + 16 * CGFloat(stage)) * (Bool.random() ? direction : -direction * 0.9)
@@ -516,17 +655,7 @@ final class ClimbScene: ArcadeScene {
     private func spawnCursor() {
         guard let ledge = level.ledges.dropFirst().randomElement() else { return }
         let fromLeft = Bool.random()
-        let node = SKShapeNode()
-        let path = CGMutablePath()
-        path.move(to: CGPoint(x: 14, y: 0))
-        path.addLine(to: CGPoint(x: -10, y: 9))
-        path.addLine(to: CGPoint(x: -5, y: 0))
-        path.addLine(to: CGPoint(x: -10, y: -9))
-        path.closeSubpath()
-        node.path = path
-        node.fillColor = .white
-        node.strokeColor = ArcadeArt.ink
-        node.lineWidth = 1.5
+        let node = SKSpriteNode(texture: ArcadeArt.cursorTexture, size: CGSize(width: 28, height: 22))
         node.zPosition = 15
         node.xScale = fromLeft ? 1 : -1
         let y = ledge.y + 26
@@ -556,12 +685,12 @@ final class ClimbScene: ArcadeScene {
         if safe > 0 || between > 0 { return }
         lives -= 1
         sound("Basso", volume: 0.5)
-        burst(at: CGPoint(x: pos.x, y: pos.y + hero * 0.5), color: ArcadeArt.cherry, count: 12)
+        burst(at: CGPoint(x: pos.x, y: pos.y + hero * 0.5), color: ArcadeArt.cherry, count: 10)
         onEvent?(.hurt)
         for roller in rollers { roller.node.removeFromParent() }
         rollers = []
         if lives <= 0 {
-            player.isHidden = true
+            if standIn { player.isHidden = true }
             puppet = ArcadePuppet(feet: CGPoint(x: pos.x, y: floorY), facing: facing)
             finish()
         } else {
@@ -649,13 +778,13 @@ final class ClimbScene: ArcadeScene {
 
         // Things coming the other way.
         nextBall -= dt
-        if nextBall <= 0 && rollers.count < 9 {
+        if nextBall <= 0 && rollers.count < ClimbScene.maxRollers {
             spawnBall()
             nextBall = max(1.3, 3.4 - 0.3 * CGFloat(stage)) * CGFloat.random(in: 0.8...1.25)
         }
         if stage >= 2 {
             nextCursor -= dt
-            if nextCursor <= 0 {
+            if nextCursor <= 0 && rollers.count < ClimbScene.maxRollers {
                 spawnCursor()
                 nextCursor = max(2.2, 6.5 - 0.5 * CGFloat(stage)) * CGFloat.random(in: 0.8...1.3)
             }
@@ -694,7 +823,7 @@ final class ClimbScene: ArcadeScene {
                 score += 150
                 sound("Glass", volume: 0.3)
                 pop("+150", at: roller.pos)
-                burst(at: roller.pos, color: roller.flying ? .white : ArcadeArt.tint(Int(roller.pos.x)))
+                burst(at: roller.pos, color: roller.flying ? .white : ArcadeArt.tint(Int(roller.pos.x)), count: 6)
                 gone = true
             } else if !gone && abs(dx) < 13 + hero * 0.2 && abs(dy) < 13 + hero * 0.42 {
                 hurt()
@@ -732,17 +861,19 @@ final class ClimbScene: ArcadeScene {
                               swing: swing > 0 ? 1 - swing / 0.22 : 0, blink: safe > 0, carrying: false, cheering: between > 0)
 
         // The stand-in sprite, when nobody real is playing.
-        player.position = pos
-        player.xScale = facing
-        player.alpha = safe > 0 && Int(clock * 12) % 2 == 0 ? 0.35 : 1
-        if grounded && abs(vel.dx) > 30 { stride += dt * 14 } else { stride = 0 }
-        player.childNode(withName: "bootL")?.position.y = grounded ? max(0, sin(stride)) * 4 : 3
-        player.childNode(withName: "bootR")?.position.y = grounded ? max(0, -sin(stride)) * 4 : 0
-        if let stick = player.childNode(withName: "stick") {
-            // On her back at rest; swept forward and down in an arc when she swings.
-            let sweep = swing > 0 ? 1 - swing / 0.22 : 0
-            stick.zRotation = swing > 0 ? -0.4 - 1.9 * sweep : 0.5
-            stick.position = swing > 0 ? CGPoint(x: 9, y: 16) : CGPoint(x: -7, y: 22)
+        if standIn {
+            player.position = pos
+            player.xScale = facing
+            player.alpha = safe > 0 && Int(clock * 12) % 2 == 0 ? 0.35 : 1
+            if grounded && abs(vel.dx) > 30 { stride += dt * 14 } else { stride = 0 }
+            player.childNode(withName: "bootL")?.position.y = grounded ? max(0, sin(stride)) * 4 : 3
+            player.childNode(withName: "bootR")?.position.y = grounded ? max(0, -sin(stride)) * 4 : 0
+            if let stick = player.childNode(withName: "stick") {
+                // On her back at rest; swept forward and down in an arc when she swings.
+                let sweep = swing > 0 ? 1 - swing / 0.22 : 0
+                stick.zRotation = swing > 0 ? -0.4 - 1.9 * sweep : 0.5
+                stick.position = swing > 0 ? CGPoint(x: 9, y: 16) : CGPoint(x: -7, y: 22)
+            }
         }
     }
 }
@@ -754,10 +885,12 @@ final class ClimbScene: ArcadeScene {
 final class BreakerScene: ArcadeScene {
     private struct Pane {
         var brick: Brick
-        let node: SKShapeNode
+        let fill: SKSpriteNode
+        let rim: SKSpriteNode
+        let baseColor: NSColor
     }
     private struct Ball {
-        let node: SKShapeNode
+        let node: SKSpriteNode
         var pos: CGPoint
         var vel: CGVector
         var held = true
@@ -772,8 +905,10 @@ final class BreakerScene: ArcadeScene {
     private var balls: [Ball] = []
     private var gifts: [Gift] = []
     private var left: [Int: Int] = [:]          // bricks still standing in each window
+    private var minPaneY: CGFloat = 0
+    private var maxPaneY: CGFloat = 0
     private let paddle = SKNode()
-    private var paddleBar = SKShapeNode()
+    private var paddleBar = SKSpriteNode()
     private var paddleX: CGFloat = 0
     private var targetX: CGFloat = 0
     private var width: CGFloat = 130
@@ -782,6 +917,7 @@ final class BreakerScene: ArcadeScene {
     private var combo = 0
     private var between: CGFloat = 0
     private let radius: CGFloat = 8
+    private static let maxGifts = 8
 
     /// She holds the paddle over her head, so it sits just above her raised hands.
     private var paddleTop: CGFloat { floorY + max(78, hero * 1.1 + 14) }
@@ -803,7 +939,7 @@ final class BreakerScene: ArcadeScene {
     }
 
     private func build() {
-        world.removeAllChildren()
+        resetWorld()
         panes = []
         balls = []
         gifts = []
@@ -811,15 +947,25 @@ final class BreakerScene: ArcadeScene {
         combo = 0
         wide = 0
         slow = 0
+        width = 130
+        minPaneY = field.maxY
+        maxPaneY = field.minY
         for var brick in ArcadeLevels.bricks(windows: desk, frame: field, floorY: floorY) {
             // Later levels are the same windows, glazed thicker.
             brick.hits = min(3, brick.hits + (stage - 1) / 2)
-            let node = SKShapeNode(rect: brick.rect, cornerRadius: 5)
-            node.zPosition = 5
-            world.addChild(node)
-            panes.append(Pane(brick: brick, node: node))
+            let baseColor = brick.window == 0 ? ArcadeArt.tint(Int(brick.rect.minY) / 36) : ArcadeArt.tint(brick.window)
+            let fill = ArcadeArt.box(brick.rect, baseColor, corner: 5)
+            fill.zPosition = 5
+            let rim = ArcadeArt.outlineBox(brick.rect, baseColor, thick: brick.hits >= 2)
+            rim.position = .zero
+            rim.zPosition = 1
+            fill.addChild(rim)
+            world.addChild(fill)
+            panes.append(Pane(brick: brick, fill: fill, rim: rim, baseColor: baseColor))
             paint(panes.count - 1)
             left[brick.window, default: 0] += 1
+            if brick.rect.minY < minPaneY { minPaneY = brick.rect.minY }
+            if brick.rect.maxY > maxPaneY { maxPaneY = brick.rect.maxY }
         }
         paddle.removeAllChildren()
         paddle.removeFromParent()
@@ -839,17 +985,13 @@ final class BreakerScene: ArcadeScene {
 
     private func paint(_ index: Int) {
         let pane = panes[index]
-        let color = pane.brick.window == 0 ? ArcadeArt.tint(Int(pane.brick.rect.minY) / 36) : ArcadeArt.tint(pane.brick.window)
-        pane.node.fillColor = color.withAlphaComponent(pane.brick.hits >= 3 ? 0.92 : (pane.brick.hits == 2 ? 0.75 : 0.5))
-        pane.node.strokeColor = pane.brick.hits >= 2 ? NSColor.white.withAlphaComponent(0.9) : color
-        pane.node.lineWidth = pane.brick.hits >= 2 ? 2 : 1
+        pane.fill.color = pane.baseColor.withAlphaComponent(pane.brick.hits >= 3 ? 0.92 : (pane.brick.hits == 2 ? 0.75 : 0.5))
+        pane.rim.texture = pane.brick.hits >= 2 ? ArcadeArt.roundedStrokeThick : ArcadeArt.roundedStrokeThin
+        pane.rim.color = pane.brick.hits >= 2 ? NSColor.white.withAlphaComponent(0.9) : pane.baseColor
     }
 
     private func addBall() {
-        let node = SKShapeNode(circleOfRadius: radius)
-        node.fillColor = ArcadeArt.cherry
-        node.strokeColor = .white
-        node.lineWidth = 1.5
+        let node = SKSpriteNode(texture: ArcadeArt.ballTexture, size: CGSize(width: radius * 2 + 2, height: radius * 2 + 2))
         node.zPosition = 25
         world.addChild(node)
         balls.append(Ball(node: node, pos: CGPoint(x: paddleX, y: paddleTop + radius), vel: .zero))
@@ -877,6 +1019,7 @@ final class BreakerScene: ArcadeScene {
     }
 
     private func drop(from rect: CGRect) {
+        guard gifts.count < BreakerScene.maxGifts else { return }
         let roll = CGFloat.random(in: 0...1)
         if roll > 0.14 { return }
         let kind = roll < 0.05 ? "wide" : (roll < 0.09 ? "multi" : (roll < 0.125 ? "slow" : "life"))
@@ -929,10 +1072,12 @@ final class BreakerScene: ArcadeScene {
         let points = 10 * min(10, combo)
         score += points
         sound("Pop", volume: 0.3)
-        burst(at: CGPoint(x: pane.brick.rect.midX, y: pane.brick.rect.midY), color: pane.node.fillColor.withAlphaComponent(1), count: 5)
+        burst(at: CGPoint(x: pane.brick.rect.midX, y: pane.brick.rect.midY), color: pane.baseColor, count: 4)
         drop(from: pane.brick.rect)
-        pane.node.removeFromParent()
-        panes.remove(at: index)
+        pane.fill.removeFromParent()
+        // O(1) swap-remove avoids shifting up to 150 panes per brick break.
+        if index < panes.count - 1 { panes.swapAt(index, panes.count - 1) }
+        panes.removeLast()
         let remaining = (left[pane.brick.window] ?? 1) - 1
         left[pane.brick.window] = remaining
         if remaining == 0 && pane.brick.window != 0 && !panes.isEmpty {
@@ -958,9 +1103,7 @@ final class BreakerScene: ArcadeScene {
         let wanted: CGFloat = wide > 0 ? 200 : 130
         if wanted != width {
             width = wanted
-            paddleBar.removeFromParent()
-            paddleBar = ArcadeArt.box(CGRect(x: -width / 2, y: -14, width: width, height: 14), ArcadeArt.gold, corner: 7)
-            paddle.addChild(paddleBar)
+            paddleBar.size.width = width
         }
         if keys.contains(Key.left) || keys.contains(Key.a) { targetX -= 760 * dt }
         if keys.contains(Key.right) || keys.contains(Key.d) { targetX += 760 * dt }
@@ -974,6 +1117,7 @@ final class BreakerScene: ArcadeScene {
         if pressed.contains(Key.space) { launch() }
 
         let ceiling = field.maxY - 96
+        let r2 = radius * radius
         var index = balls.count - 1
         while index >= 0 {
             var ball = balls[index]
@@ -983,7 +1127,7 @@ final class BreakerScene: ArcadeScene {
                 // Keep to the current pace (levels, the slow gift), then move in steps too small to skip a brick.
                 let now = max(1, hypot(ball.vel.dx, ball.vel.dy))
                 ball.vel = CGVector(dx: ball.vel.dx / now * pace, dy: ball.vel.dy / now * pace)
-                let steps = max(1, Int((pace * dt / 5).rounded(.up)))
+                let steps = min(6, max(1, Int((pace * dt / 6).rounded(.up))))
                 let slice = dt / CGFloat(steps)
                 var lost = false
                 for _ in 0..<steps {
@@ -1011,26 +1155,36 @@ final class BreakerScene: ArcadeScene {
                         combo = 0
                         sound("Tink", volume: 0.25)
                     }
-                    if let hit = panes.firstIndex(where: { pane in
-                        let r = pane.brick.rect
-                        let nearX = max(r.minX, min(r.maxX, ball.pos.x))
-                        let nearY = max(r.minY, min(r.maxY, ball.pos.y))
-                        let dx = ball.pos.x - nearX
-                        let dy = ball.pos.y - nearY
-                        return dx * dx + dy * dy < radius * radius
-                    }) {
-                        let r = panes[hit].brick.rect
-                        // Bounce off whichever face it came in through.
-                        let fromSide = min(abs(ball.pos.x - r.minX), abs(ball.pos.x - r.maxX))
-                        let fromEnd = min(abs(ball.pos.y - r.minY), abs(ball.pos.y - r.maxY))
-                        let inside = r.contains(ball.pos)
-                        let side = (ball.pos.x < r.minX || ball.pos.x > r.maxX) && !(ball.pos.y < r.minY || ball.pos.y > r.maxY)
-                        if side || (inside && fromSide < fromEnd) {
-                            ball.vel.dx = ball.pos.x < r.midX ? -abs(ball.vel.dx) : abs(ball.vel.dx)
-                        } else {
-                            ball.vel.dy = ball.pos.y < r.midY ? -abs(ball.vel.dy) : abs(ball.vel.dy)
+                    // Quick Y-band reject avoids scanning bricks while the ball is in the lower half of the screen.
+                    if ball.pos.y + radius >= minPaneY && ball.pos.y - radius <= maxPaneY {
+                        var hitIndex: Int?
+                        for i in panes.indices {
+                            let r = panes[i].brick.rect
+                            if ball.pos.x + radius < r.minX || ball.pos.x - radius > r.maxX
+                                || ball.pos.y + radius < r.minY || ball.pos.y - radius > r.maxY { continue }
+                            let nearX = max(r.minX, min(r.maxX, ball.pos.x))
+                            let nearY = max(r.minY, min(r.maxY, ball.pos.y))
+                            let dx = ball.pos.x - nearX
+                            let dy = ball.pos.y - nearY
+                            if dx * dx + dy * dy < r2 {
+                                hitIndex = i
+                                break
+                            }
                         }
-                        strike(hit)
+                        if let hit = hitIndex {
+                            let r = panes[hit].brick.rect
+                            // Bounce off whichever face it came in through.
+                            let fromSide = min(abs(ball.pos.x - r.minX), abs(ball.pos.x - r.maxX))
+                            let fromEnd = min(abs(ball.pos.y - r.minY), abs(ball.pos.y - r.maxY))
+                            let inside = r.contains(ball.pos)
+                            let side = (ball.pos.x < r.minX || ball.pos.x > r.maxX) && !(ball.pos.y < r.minY || ball.pos.y > r.maxY)
+                            if side || (inside && fromSide < fromEnd) {
+                                ball.vel.dx = ball.pos.x < r.midX ? -abs(ball.vel.dx) : abs(ball.vel.dx)
+                            } else {
+                                ball.vel.dy = ball.pos.y < r.midY ? -abs(ball.vel.dy) : abs(ball.vel.dy)
+                            }
+                            strike(hit)
+                        }
                     }
                     if ball.pos.y < floorY + 10 {
                         lost = true
@@ -1144,6 +1298,8 @@ final class ArcadeController: NSObject, NSWindowDelegate {
         let view = SKView(frame: NSRect(origin: .zero, size: size))
         view.allowsTransparency = true
         view.ignoresSiblingOrder = true
+        view.shouldCullNonVisibleNodes = true
+        view.preferredFramesPerSecond = 60
         view.presentScene(made)
         panel.contentView = view
 
@@ -1160,9 +1316,19 @@ final class ArcadeController: NSObject, NSWindowDelegate {
 
     func stop() {
         guard let panel = window else { return }
+        scene?.onPuppet = nil
+        scene?.onLeave = nil
+        scene?.onEvent = nil
+        scene?.removeAllActions()
+        scene?.removeAllChildren()
+        if let skView = panel.contentView as? SKView {
+            skView.isPaused = true
+            skView.presentScene(nil)
+        }
         panel.delegate = nil
+        panel.contentView = nil
         panel.orderOut(nil)
-        (panel.contentView as? SKView)?.presentScene(nil)
+        panel.close()
         window = nil
         scene = nil
         playing = nil

@@ -479,7 +479,7 @@ struct ChatView: View {
                                 prompt: "Give me a 20-minute workout I can do right now with no equipment. Check my profile and recent log so it fits. Warm-up, main set, cool-down.")
                 }
                 chip("Log a session") {
-                    session.draft = "Log it: "
+                    session.prefillDraft("Log it: ")
                     session.focusTick += 1
                 }
                 chip("How's my week?") {
@@ -505,15 +505,15 @@ struct ChatView: View {
                                 prompt: "Tighten this: cut filler and repetition, keep the meaning. Reply with only the text.\n\n" + String(text.prefix(8000)))
                 }
                 chip("An opening line") {
-                    session.draft = "Give me five opening lines for a piece about "
+                    session.prefillDraft("Give me five opening lines for a piece about ")
                     session.focusTick += 1
                 }
                 chip("A better word for…") {
-                    session.draft = "Give me better words for: "
+                    session.prefillDraft("Give me better words for: ")
                     session.focusTick += 1
                 }
                 chip("Fix this sentence") {
-                    session.draft = "Fix this sentence: "
+                    session.prefillDraft("Fix this sentence: ")
                     session.focusTick += 1
                 }
             }
@@ -558,7 +558,7 @@ struct ChatView: View {
                     session.ask(display: "What's next?", prompt: Office.nextPrompt)
                 }
                 chip("Capture…") {
-                    session.draft = "Remember for me: "
+                    session.prefillDraft("Remember for me: ")
                     session.focusTick += 1
                 }
                 if focus.sweepActive {

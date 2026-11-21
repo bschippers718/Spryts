@@ -633,6 +633,7 @@ final class MakerStage: ObservableObject {
             target.bodyY = 1.2 * sin(time * 2.2) + cue.bounce
             target.lean = cue.lean
             target.tilt = cue.sway
+            target.headYaw = cue.headYaw
             target.headTilt = cue.headTilt
             target.headPitch = cue.headPitch
             target.squash = cue.squash
@@ -651,6 +652,7 @@ final class MakerStage: ObservableObject {
             target.blush = cue.blush
             target.lookX = cue.lookX
             target.lookY = cue.lookY
+            target.twitch = cue.twitch
         } else if loop == "stand" {
             // Standing: breathing and a slow look around.
             target.yaw = 0.35
@@ -667,6 +669,7 @@ final class MakerStage: ObservableObject {
         if time.truncatingRemainder(dividingBy: 3.4) < 0.12 { target.eyeOpen = min(target.eyeOpen, 0.06) }
         pose.approach(target, 0.22)
         pose.eyeOpen = target.eyeOpen
+        pose.twitch = target.twitch
         pose.roll = roll
         pose.spin = spin
         holder.position = v3(0, lift, 0)

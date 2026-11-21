@@ -430,6 +430,13 @@ enum Moves {
             p.mouthOpen = 0.3 * e
         case "nod":
             p.headPitch += 0.25 * sin(u * 12) * e
+        case "think":
+            p.armR = 0.95 * e
+            p.elbowR = 0.2 + 2.0 * e
+            p.headTilt = 0.16 * e
+            p.headPitch = (0.08 + 0.05 * sin(u * 3)) * e
+            p.browCock = e
+            p.smile = 0.1
         case "shrug":
             p.armOutL = 0.12 + 0.5 * e
             p.armOutR = 0.12 + 0.5 * e

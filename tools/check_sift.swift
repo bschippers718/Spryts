@@ -181,6 +181,9 @@ struct SiftChecks {
         expect(first == "1", "the promoted post is hidden by default")
         let kept = await controller.keptPosts()
         expect(kept.count == 7 && !kept.contains { $0.author == "brand" }, "the app can read the seven posts Sift kept")
+        let filteredSample = await controller.briefPosts()
+        expect(filteredSample.filtered && filteredSample.posts.count == 7 && !filteredSample.posts.contains { $0.author == "brand" },
+               "brief uses Sift's filtered posts when Sift is reading the page")
 
         live.update { $0.mutedKeywords = "memecoin"; $0.hideReposts = true }
         await pause(1.2)
@@ -234,9 +237,42 @@ struct SiftChecks {
         expect(!"\(report)".contains("memecoin") && !"\(report)".contains("latecomer"), "and that report holds no post or account")
         expect(!SiftWebController.reads(["articles": 6, "read": 0, "error": ""])
                && !SiftWebController.reads(["articles": 0, "cells": 9, "error": ""])
+               && !SiftWebController.reads(["articles": 0, "cells": 0, "anyArticle": 20, "read": 0, "error": ""])
+               && !SiftWebController.reads(["articles": 0, "cells": 0, "roleArticle": 5, "read": 0, "error": ""])
                && !SiftWebController.reads(["articles": 6, "read": 6, "error": "TypeError"])
-               && SiftWebController.reads(["articles": 0, "cells": 0, "error": ""]),
+               && SiftWebController.reads(["articles": 0, "cells": 0, "anyArticle": 0, "roleArticle": 0, "error": ""]),
                "posts on the page that Sift has not read count as a problem; an empty timeline does not")
+
+        // When X omits data-testid attributes entirely, health reports a problem and Brief falls back to visible articles.
+        let noTestIdHTML = """
+        <html><body><main>
+        <article tabindex="0"><a href="/alice/status/5001/photo/1">pic</a>
+          <div lang="en">Shipping the new engine today!</div>
+          <a href="/alice/status/5001"><time datetime="2026-11-20T15:00:00Z">now</time></a>
+          <div role="group"><button>Like</button></div>
+        </article>
+        <article tabindex="0">
+          <div><p>Plain fallback text without lang attribute</p></div>
+          <a href="/bob/status/5002"><time datetime="2026-11-20T14:30:00.000Z">30m</time></a>
+        </article>
+        </main></body></html>
+        """
+        let fallbackStore = SiftStore(file: root.appendingPathComponent("sift-fallback.json"))
+        let fallbackController = SiftWebController(store: fallbackStore)
+        fallbackController.webView.frame = NSRect(x: 0, y: 0, width: 900, height: 1200)
+        fallbackController.webView.loadHTMLString(noTestIdHTML, baseURL: URL(string: "https://x.com/home"))
+        await pause(2.5)
+        let fallbackReport = await fallbackController.readingReport() ?? [:]
+        expect(!SiftWebController.reads(fallbackReport) && (fallbackReport["anyArticle"] as? NSNumber)?.intValue == 2
+               && (fallbackReport["fallbackCount"] as? NSNumber)?.intValue == 2,
+               "reports unhealthy when X has articles without data-testid, and counts fallback posts")
+        expect(!"\(fallbackReport)".contains("Shipping") && !"\(fallbackReport)".contains("alice") && !"\(fallbackReport)".contains("5001"),
+               "structural health report still leaks no post text, handle, or URL")
+        let fallbackSample = await fallbackController.briefPosts()
+        expect(!fallbackSample.filtered && fallbackSample.posts.count == 2
+               && fallbackSample.posts[0].author == "alice" && fallbackSample.posts[0].url.absoluteString == "https://x.com/alice/status/5001"
+               && fallbackSample.posts[0].time != nil && fallbackSample.posts[1].author == "bob",
+               "Brief falls back cleanly to visible <article> posts when Sift reads zero")
 
         live.update { $0.enabled = false }
         await pause(1.2)

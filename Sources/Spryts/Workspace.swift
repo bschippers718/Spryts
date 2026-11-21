@@ -511,7 +511,7 @@ struct WorkspaceView: View {
 
     /// Puts a question in the input, ready to finish and send.
     private func draft(_ text: String) {
-        session.draft = text
+        session.prefillDraft(text)
         showAssistant = true
         typing = true
     }
@@ -782,7 +782,7 @@ struct WorkspaceView: View {
             }
             if !mentionMatches.isEmpty {
                 MentionList(matches: mentionMatches, tint: tint) { path in
-                    session.draft = Mentions.complete(session.draft, with: path)
+                    session.prefillDraft(Mentions.complete(session.draft, with: path))
                     typing = true
                 }
             }
@@ -802,7 +802,7 @@ struct WorkspaceView: View {
                     .onSubmit { session.send() }
                     .onKeyPress(.tab) {
                         guard let first = mentionMatches.first else { return .ignored }
-                        session.draft = Mentions.complete(session.draft, with: first)
+                        session.prefillDraft(Mentions.complete(session.draft, with: first))
                         return .handled
                     }
                 if session.busy {

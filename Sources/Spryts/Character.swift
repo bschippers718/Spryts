@@ -56,6 +56,9 @@ final class SprytCharacter {
     var pos: CGPoint
     var attention = false
     var panelOpen = false
+    var workspaceOpen = false
+    /// Where the active composer sits on screen (popup text field, when open), so the eyes look at what is being typed.
+    var inputTarget: CGPoint?
     var pendingSpeech: String?
     /// True while this character is running a game: it stays put, stays awake, and throws things.
     var playing = false
@@ -183,6 +186,11 @@ final class SprytCharacter {
     /// What it has heard of the message being typed to it. See Listening.swift.
     private var ear = Ear()
     private var hearing: AnyCancellable?
+    private var reactionTime: CGFloat = 0
+    private var reactionFeeling: Feeling = .neutral
+    private var attentionPerk: CGFloat = 0
+    private var wasAttention = false
+    private var heldLiftVel: CGFloat = 0
     private var lapsLeft = 0
     private var lapHome: CGFloat = 0
     private var backward = false
@@ -292,10 +300,17 @@ final class SprytCharacter {
     /// The draft changed: a key was pressed, text was pasted, or the box was emptied.
     private func heard(_ draft: String) {
         let wasEmpty = ear.length == 0
-        ear.heard(draft, name: sheet.name)
+        ear.heard(draft, name: sheet.name, programmatic: session.draftIsProgrammatic)
         if wasEmpty && !draft.isEmpty {
             sinceInteraction = 0
             wake()
+            // Yield solo idle habits so the character turns to listen immediately, never interrupting real work or led breaks.
+            if activity == .none && leading == nil {
+                fidget = 0
+                micro = 0
+                hobbyTime = 0
+                drill = 0
+            }
         }
     }
 
@@ -306,22 +321,32 @@ final class SprytCharacter {
     }
 
     /// A message was just sent: answer it with the body at once, while the words are still on their way.
-    private func respond(to said: String) {
+    /// Returns true if a visible reaction was started.
+    @discardableResult
+    private func respond(to said: String) -> Bool {
         if mode == .napping || mode == .sitting { wake() }
-        guard mode == .idle else { return }
-        switch Listening.response(to: Listening.read(said, name: sheet.name)) {
+        if mode == .walking { setMode(.idle) }
+        guard mode == .idle || mode == .landing else { return false }
+        let reading = Listening.read(said, name: sheet.name)
+        reactionFeeling = reading.feeling
+        switch Listening.response(to: reading) {
         case .nothing:
-            break
+            return false
         case .move(let move):
             showEmote("!")
             perform(move)
+            return true
         case .gesture(let name, let symbol):
             gesture = name
             gestureTime = Moves.info(name) != nil ? Moves.seconds(name) : 1.9
+            reactionTime = gestureTime
             if let symbol { showEmote(symbol) }
+            return true
         case .hop(let symbol):
-            hop(height: body.height * 0.5, withFlip: false)
+            hop(height: body.height * 0.55, withFlip: false)
+            reactionTime = 1.0
             if let symbol { showEmote(symbol) }
+            return true
         }
     }
 
@@ -332,20 +357,68 @@ final class SprytCharacter {
         switch move {
         case "jump":
             hop(height: H * 0.5, withFlip: false)
+            reactionTime = 1.1
+        case "hops":
+            comboHops = 2
+            hop(height: H * 0.3, withFlip: false)
+            reactionTime = 3.0
         case "flip":
             hop(height: H * 0.95, withFlip: flips)
+            reactionTime = 1.5
         case "spin":
             spinLeft = 6 * CGFloat.pi
             dizzyAfterSpin = true
+            reactionTime = 3.4
         case "twirl":
             spinLeft = 2 * CGFloat.pi
             dizzyAfterSpin = false
-        case "dance", "moonwalk", "lap":
-            startDance(seconds: 3.2)
+            reactionTime = 1.3
+        case "dance":
+            startDance(seconds: 3.6)
+            reactionTime = 3.6
+        case "lap":
+            if let world = lastWorld {
+                let (lo, hi) = limits(world)
+                if hi - lo >= H * 2 {
+                    lapHome = pos.x
+                    lapsLeft = 2
+                    let farEnd = (pos.x - lo) > (hi - pos.x) ? lo : hi
+                    walkTarget = clamp(farEnd, pos.x - 420, pos.x + 420)
+                    facing = walkTarget >= pos.x ? 1 : -1
+                    gait = .run
+                    errand = .lap
+                    showEmote("♪")
+                    setMode(.walking)
+                    reactionTime = 3.2
+                    return
+                }
+            }
+            startDance(seconds: 3.0)
+            reactionTime = 3.0
+        case "moonwalk":
+            if let world = lastWorld {
+                let (lo, hi) = limits(world)
+                let distance = min(H * 3, (hi - lo) * 0.6)
+                if distance >= H * 0.8 {
+                    var dir: CGFloat = Bool.random() ? 1 : -1
+                    if pos.x + dir * distance < lo || pos.x + dir * distance > hi { dir = -dir }
+                    walkTarget = clamp(pos.x + dir * distance, lo, hi)
+                    facing = walkTarget >= pos.x ? -1 : 1
+                    backward = true
+                    gait = .walk
+                    errand = .none
+                    setMode(.walking)
+                    reactionTime = 3.0
+                    return
+                }
+            }
+            startDance(seconds: 2.6)
+            reactionTime = 2.6
         default:
             guard Moves.info(move) != nil else { return }
             gesture = move
             gestureTime = Moves.seconds(move)
+            reactionTime = gestureTime
         }
     }
 
@@ -479,11 +552,13 @@ return CGRect(x: pos.x - H * 0.45, y: pos.y + altitude - 4, width: H * 0.9, heig
 
     private func setActivity(_ a: Activity) {
         if a != .none { cancelSocialReply() }
+        if a == .asking || a == .error { reactionTime = 0 }
         if activity != a {
             activity = a
             activityTime = 0
         }
-        if a != .none && (mode == .sitting || mode == .napping || mode == .walking || mode == .dancing) {
+        let preservingReaction = reactionTime > 0 && (a == .thinking || a == .talking)
+        if a != .none && !preservingReaction && (mode == .sitting || mode == .napping || mode == .walking || mode == .dancing) {
             errand = .none
             buddy = nil
             idleFor = 1
@@ -583,8 +658,8 @@ return CGRect(x: pos.x - H * 0.45, y: pos.y + altitude - 4, width: H * 0.9, heig
         switch event {
         case .thinking:
             setActivity(.thinking)
-            showEmote("…")
-            if let said = ear.takeSent() { respond(to: said) }
+            let reacted = ear.takeSent().map { respond(to: $0) } ?? false
+            if !reacted { showEmote("…") }
         case .streaming:
             setActivity(.talking)
         case .tool(let kind):
@@ -678,6 +753,32 @@ return CGRect(x: pos.x - H * 0.45, y: pos.y + altitude - 4, width: H * 0.9, heig
 
     func noteInteraction() {
         sinceInteraction = 0
+    }
+
+    /// Files were dropped onto this character: wake up and catch them with a quick perk or hop.
+    func caughtFiles(_ count: Int) {
+        sinceInteraction = 0
+        wake()
+        if activity == .none && leading == nil {
+            fidget = 0
+            micro = 0
+            hobbyTime = 0
+            drill = 0
+        }
+        mood = "playful"
+        flashTime = 0.7
+        showEmote(count > 1 ? "✦" : "!")
+        if mode == .idle {
+            if isFloater {
+                gesture = "nod"
+                gestureTime = 1.4
+            } else {
+                hop(height: body.height * 0.35, withFlip: false)
+                gesture = "pump"
+                gestureTime = 0.9
+            }
+            emit(count: 6, sparkle: true, dy: body.height * 0.85, spread: 0.9)
+        }
     }
 
     // MARK: Games
@@ -982,12 +1083,24 @@ return CGRect(x: pos.x - H * 0.45, y: pos.y + altitude - 4, width: H * 0.9, heig
     // MARK: Being picked up and thrown
 
     func beginDrag() {
+        sinceInteraction = 0
         cancelSocialReply()
         dangle = 0
         dangleVel = 0
+        heldLiftVel = 0
         errand = .none
         buddy = nil
         pendingFlee = false
+        gesture = "none"
+        gestureTime = 0
+        reactionTime = 0
+        fidget = 0
+        micro = 0
+        hobbyTime = 0
+        drill = 0
+        sulk = 0
+        pokeTime = 0
+        comboHops = 0
         // A floater is picked up from where it hangs, not from the ground below it.
         heldLift = altitude
         altitude = 0
@@ -995,9 +1108,10 @@ return CGRect(x: pos.x - H * 0.45, y: pos.y + altitude - 4, width: H * 0.9, heig
         setMode(.held)
     }
 
-    func drag(to p: CGPoint, dx: CGFloat) {
+    func drag(to p: CGPoint, dx: CGFloat, dy: CGFloat = 0) {
         pos = CGPoint(x: p.x, y: p.y + heldLift)
-        dangleVel += clamp(dx * 0.03, -2, 2)
+        dangleVel += clamp(dx * 0.032, -2.4, 2.4)
+        heldLiftVel = heldLiftVel * 0.65 + clamp(dy * 0.04, -1.2, 1.2) * 0.35
     }
 
     /// Leaves the stage through one side. It stays there, peeking in, until clicked.
@@ -1087,7 +1201,13 @@ return CGRect(x: pos.x - H * 0.45, y: pos.y + altitude - 4, width: H * 0.9, heig
             perform(puppet, dt: dt)
             return
         }
-        ear.tick(dt, attending: panelOpen)
+        ear.tick(dt, attending: panelOpen || workspaceOpen)
+        if reactionTime > 0 { reactionTime = max(0, reactionTime - dt) }
+        if attention && !wasAttention && mode == .idle && activity == .none {
+            attentionPerk = 1
+        }
+        wasAttention = attention
+        if attentionPerk > 0 { attentionPerk = max(0, attentionPerk - dt * 2.2) }
         startleCooldown -= dt
         if attention { sinceInteraction = 0 }
         if gestureTime > 0 {
@@ -1095,7 +1215,7 @@ return CGRect(x: pos.x - H * 0.45, y: pos.y + altitude - 4, width: H * 0.9, heig
             if gestureTime <= 0 { gesture = "none" }
         }
         if activity == .error && activityTime > 3 { setActivity(.waiting) }
-        if activity == .waiting && activityTime > 25 && !panelOpen { setActivity(.none) }
+        if activity == .waiting && activityTime > 25 && !panelOpen && !workspaceOpen { setActivity(.none) }
 
         let H = body.height
         let m = sheet.motion
@@ -1233,10 +1353,10 @@ return CGRect(x: pos.x - H * 0.45, y: pos.y + altitude - 4, width: H * 0.9, heig
 
         switch mode {
         case .idle:
-            let stayPut = playing || attention || quiet || ear.level > 0.15 || gestureTime > 0 || petting || sulk > 0 || pokeTime > 0 || hobbyTime > 0
+            let stayPut = playing || attention || quiet || ear.level > 0.05 || gestureTime > 0 || reactionTime > 0 || petting || sulk > 0 || pokeTime > 0 || hobbyTime > 0
                 || activity == .talking || activity == .tool || activity == .error || activity == .waiting
                 || activity == .asking
-                || (activity == .thinking && panelOpen)
+                || (activity == .thinking && (panelOpen || workspaceOpen))
             if stayPut { break }
             if activity == .thinking {
                 // Pace back and forth while the bot works in the background.
@@ -1279,7 +1399,7 @@ return CGRect(x: pos.x - H * 0.45, y: pos.y + altitude - 4, width: H * 0.9, heig
             if idleFor <= 0 { decide(world: world, mouse: mouse, others: others) }
 
         case .walking:
-            if (attention && !summoned) || quiet {
+            if (attention && !summoned && reactionTime <= 0) || quiet {
                 errand = .none
                 buddy = nil
                 idleFor = 1
@@ -1501,7 +1621,7 @@ return CGRect(x: pos.x - H * 0.45, y: pos.y + altitude - 4, width: H * 0.9, heig
 
         case .landing:
             if modeTime >= landTime {
-                if comboHops > 0 && activity == .none && !attention {
+                if comboHops > 0 && (reactionTime > 0 || (activity == .none && !attention)) {
                     comboHops -= 1
                     hop(height: H * (comboHops == 0 ? 0.95 : 0.55), withFlip: comboHops == 0)
                     break
@@ -1526,6 +1646,7 @@ return CGRect(x: pos.x - H * 0.45, y: pos.y + altitude - 4, width: H * 0.9, heig
         case .held:
             dangleVel += (-60 * dangle - 6 * dangleVel) * dt
             dangle = clamp(dangle + dangleVel * dt, -0.9, 0.9)
+            heldLiftVel *= exp(-dt * 8)
 
         case .offstage:
             // Waiting in the wings: lean out to look, wave now and then, tuck back in.
@@ -1661,7 +1782,7 @@ return CGRect(x: pos.x - H * 0.45, y: pos.y + altitude - 4, width: H * 0.9, heig
         // Each role has its own small habits, with room for an intentional gesture to read clearly.
         let settled = mode == .idle || mode == .sitting
         let crowd = max(1, CGFloat(others.filter { !$0.isOffstage }.count) / 2)
-        if settled && !quiet && !playing && !petting && sulk <= 0 && activity == .none
+        if settled && !quiet && !playing && !petting && !listening && ear.level <= 0.02 && sulk <= 0 && activity == .none
             && gestureTime <= 0 && hobbyTime <= 0 && fidget == 0 && drill == 0 {
             if micro == 0 {
                 nextMicro -= dt / sqrt(crowd)
@@ -1687,7 +1808,7 @@ return CGRect(x: pos.x - H * 0.45, y: pos.y + altitude - 4, width: H * 0.9, heig
         }
 
         // Medium gestures: about once a minute, only when there is nothing else to do.
-        if mode == .idle && activity == .none && gestureTime <= 0 && !attention && peekTime <= 0
+        if mode == .idle && activity == .none && gestureTime <= 0 && !attention && ear.level <= 0.02 && peekTime <= 0
             && !quiet && !playing && !petting && hobbyTime <= 0 && sulk <= 0 && pokeTime <= 0 {
             if fidget == 0 {
                 // The more characters on stage, the less often each one fidgets, so the screen as a whole stays calm.
@@ -2489,15 +2610,16 @@ return CGRect(x: pos.x - H * 0.45, y: pos.y + altitude - 4, width: H * 0.9, heig
             p.eyeOpen = 1.1
 
         case .held:
+            let liftKick = clamp(heldLiftVel * 0.25, -0.35, 0.35)
             p.yaw = 0
-            p.armOutL = 2.7
-            p.armOutR = 2.7
-            p.legL = dangle
-            p.legR = dangle * 0.7
-            p.kneeL = 0.3
-            p.kneeR = 0.3
+            p.armOutL = clamp(2.65 + liftKick * 0.6, 2.2, 3.0)
+            p.armOutR = clamp(2.65 + liftKick * 0.6, 2.2, 3.0)
+            p.legL = dangle + liftKick * 0.4 + 0.12 * sin(t * 11)
+            p.legR = dangle * 0.7 - liftKick * 0.4 - 0.12 * sin(t * 11)
+            p.kneeL = 0.3 + max(0, -liftKick) * 0.8
+            p.kneeR = 0.3 + max(0, -liftKick) * 0.8
             p.tilt = dangle * 0.5
-            p.squash = 1.06
+            p.squash = clamp(1.06 + heldLiftVel * 0.12, 0.9, 1.2)
             p.eyeOpen = 1.2
 
         case .sitting, .napping:
@@ -2766,7 +2888,8 @@ return CGRect(x: pos.x - H * 0.45, y: pos.y + altitude - 4, width: H * 0.9, heig
         }
 
         let acting: Activity = (activity == .none && hobbyTime > 0 && drill == 0) ? .tool : activity
-        if mode == .idle {
+        let showingReactionGesture = gestureTime > 0 && reactionTime > 0 && (activity == .thinking || activity == .talking)
+        if mode == .idle && !showingReactionGesture {
             switch acting {
             case .thinking:
                 p.yaw = facing * 0.35
@@ -2892,25 +3015,41 @@ return CGRect(x: pos.x - H * 0.45, y: pos.y + altitude - 4, width: H * 0.9, heig
             }
         }
 
-        // Turn to face whoever is hovering.
+        // Turn to face whoever is hovering, or the input box when listening.
         let headPoint = CGPoint(x: pos.x, y: pos.y + altitude + H * 0.8)
         let dx = mouse.x - headPoint.x
         let dy = mouse.y - headPoint.y
-        if attention && mode == .idle && activity != .tool {
+        var listeningGazeY: CGFloat = -0.35
+        if let target = inputTarget {
+            listeningGazeY = clamp((target.y - headPoint.y) / 260, -0.55, 0.55)
+        } else if panelOpen {
+            listeningGazeY = 0.42
+        } else if perched {
+            listeningGazeY = -0.45
+        }
+        let cue = listening ? Listening.cue(for: ear, at: t, energy: personality.talkingEnergy, gazeY: listeningGazeY) : nil
+
+        if attention && mode == .idle && activity != .tool && cue == nil {
             p.yaw = clamp(dx / 600, -0.4, 0.4)
+        }
+        if attentionPerk > 0 && mode == .idle && activity == .none && !petting {
+            p.lean += 0.05 * attentionPerk
+            p.bodyY += 1.2 * attentionPerk
+            p.twitch = max(p.twitch, 0.7 * attentionPerk)
         }
 
         // A glance has a purpose: attend to the person, the work, or the direction of travel.
-        // Looking at a nearby cursor must not pull their eyes away from a page or a greeting.
+        // Looking at a nearby cursor must not pull their eyes away from a page, a greeting, or what is being typed.
         let near = hypot(dx, dy) < 520
         let calm = mode == .idle || mode == .walking || mode == .sitting || mode == .landing || mode == .crouching
         let occupiedGaze = gestureTime > 0 || hobbyTime > 0 || fidget != 0 || micro != 0 || drill != 0 || activity != .none
         let followsCursor = cursorOnScreen && calm && activity != .error && acting != .tool
             && (attention || (near && mode != .walking && !occupiedGaze))
-        if followsCursor {
+        let cursorHeadWeight: CGFloat = cue.map { max(0, 1 - $0.attention * 1.4) } ?? 1
+        if followsCursor && cursorHeadWeight > 0.01 {
             let worldYaw = clamp(dx / 260, -1, 1)
-            p.headYaw += clamp(worldYaw - p.yaw, -1.1, 1.1) * 0.9
-            p.headPitch += clamp(-dy / 420, -0.45, 0.45)
+            p.headYaw += clamp(worldYaw - p.yaw, -1.1, 1.1) * 0.9 * cursorHeadWeight
+            p.headPitch += clamp(-dy / 420, -0.45, 0.45) * cursorHeadWeight
         }
 
         // The coach's own exercise.
@@ -3005,11 +3144,12 @@ return CGRect(x: pos.x - H * 0.45, y: pos.y + altitude - 4, width: H * 0.9, heig
 
         // One-shot gestures chosen by the bot's reply or by a neighbour.
         // Listening: the body answers what is being typed to it.
-        let cue = listening ? Listening.cue(for: ear, at: t, energy: personality.talkingEnergy) : nil
         if let cue {
-            p.yaw += (0.12 * facing - p.yaw) * cue.attention
+            let targetYaw: CGFloat = inputTarget.map { clamp(($0.x - pos.x) / 500, -0.35, 0.35) } ?? (0.12 * facing)
+            p.yaw += (targetYaw - p.yaw) * cue.attention
             p.lean += cue.lean
             p.tilt += cue.sway
+            p.headYaw += cue.headYaw
             p.headTilt += cue.headTilt
             p.headPitch += cue.headPitch
             p.bodyY += cue.bounce
@@ -3020,7 +3160,8 @@ return CGRect(x: pos.x - H * 0.45, y: pos.y + altitude - 4, width: H * 0.9, heig
             p.armR += cue.armsForward
             p.elbowL += cue.elbows
             p.elbowR += cue.elbows + 0.5 * cue.handUp
-            p.eyeOpen = cue.eyeOpen
+            p.eyeOpen += (cue.eyeOpen - p.eyeOpen) * cue.attention
+            p.twitch = max(p.twitch, cue.twitch)
         }
         if gestureTime > 0 && (mode == .idle || mode == .landing) {
             switch gesture {
@@ -3308,6 +3449,39 @@ return CGRect(x: pos.x - H * 0.45, y: pos.y + altitude - 4, width: H * 0.9, heig
             }
         }
         if gestureTime > 0 && gesture == "wave" { smile = max(smile, 0.85) }
+        if showingReactionGesture {
+            // Keep the face aligned with the message being answered rather than overwriting it with `.thinking`.
+            switch gesture {
+            case "wave":
+                smile = 0.92; mouth = 0.25; cock = 0; lift = max(lift, 0.3)
+            case "bow":
+                smile = 0.95; blush = max(blush, 0.75); cock = 0; brow = 0
+            case "wiggle":
+                smile = 1; blush = max(blush, 0.8); cock = 0; brow = 0
+            case "shimmy":
+                smile = 1; mouth = 0.5; cock = 0; brow = 0
+            case "stretch":
+                smile = 0.1; mouth = 0.55; cock = 0; brow = 0
+            case "think":
+                smile = 0.1; cock = 1; lift = max(lift, 0.3)
+            case "nod":
+                cock = 0
+                switch reactionFeeling {
+                case .sad, .worried:
+                    smile = -0.35; brow = -0.45; lift = max(lift, 0.4)
+                case .frustrated:
+                    smile = -0.25; brow = -0.3; lift = max(lift, 0.3)
+                case .urgent:
+                    smile = 0.1; brow = 0.3; lift = max(lift, 0.35)
+                default:
+                    smile = 0.45
+                }
+            case "jacks", "kicks", "swing", "flex", "stomp":
+                smile = 0.95; mouth = 0.3; cock = 0; brow = gesture == "stomp" || gesture == "flex" ? 0.25 : 0
+            default:
+                break
+            }
+        }
         if petting {
             smile = 1
             mouth = 0
@@ -3383,10 +3557,13 @@ return CGRect(x: pos.x - H * 0.45, y: pos.y + altitude - 4, width: H * 0.9, heig
         }
 
         // Eyes lead the head, and stay on the prop during a specialist's quiet hobby.
-        if let cue, cue.attention > 0.3 {
-            // Reading along as you type.
-            p.lookX = cue.lookX
-            p.lookY = cue.lookY
+        if let cue {
+            // Smooth handoff between resting/cursor gaze and reading along as you type.
+            let a = cue.attention
+            let baseX: CGFloat = followsCursor ? clamp(dx / 260, -1, 1) * cos(p.yaw) : 0
+            let baseY: CGFloat = followsCursor ? clamp(dy / 260, -1, 1) : 0
+            p.lookX = baseX + (cue.lookX - baseX) * a
+            p.lookY = baseY + (cue.lookY - baseY) * a
         } else if followsCursor {
             p.lookX = clamp(dx / 260, -1, 1) * cos(p.yaw)
             p.lookY = clamp(dy / 260, -1, 1)

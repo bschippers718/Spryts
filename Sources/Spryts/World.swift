@@ -28,6 +28,8 @@ final class World {
 
         var newRects: [CGRect] = []
         var newPlatforms: [Platform] = []
+        newRects.reserveCapacity(min(list.count, 40))
+        newPlatforms.reserveCapacity(min(list.count, 40))
         for info in list {
             guard let layer = info[kCGWindowLayer as String] as? Int, layer == 0,
                   let pid = info[kCGWindowOwnerPID as String] as? Int,
@@ -53,12 +55,16 @@ final class World {
         platforms = newPlatforms
     }
 
-    /// True when a window in front hides this spot on the edge.
-    private func covered(x: CGFloat, y: CGFloat, order: Int) -> Bool {
-        let probe = CGPoint(x: x, y: y + 6)
+    /// True when a window in front hides this spot on the edge or blocks the standing space above it.
+    private func covered(x: CGFloat, y: CGFloat, clearance: CGFloat, order: Int) -> Bool {
+        let low = y + 2
+        let high = y + max(12, clearance * 0.65)
         var i = 0
         while i < order && i < rects.count {
-            if rects[i].contains(probe) { return true }
+            let r = rects[i]
+            if x >= r.minX && x <= r.maxX && r.minY < high && r.maxY > low {
+                return true
+            }
             i += 1
         }
         return false
@@ -67,7 +73,7 @@ final class World {
     private func usable(_ p: Platform, x: CGFloat, clearance: CGFloat) -> Bool {
         if x < p.minX - 2 || x > p.maxX + 2 { return false }
         if p.y + clearance > frame.maxY { return false }
-        return !covered(x: x, y: p.y, order: p.order)
+        return !covered(x: x, y: p.y, clearance: clearance, order: p.order)
     }
 
     /// Height of the surface with this id at x, or nil if it is gone.

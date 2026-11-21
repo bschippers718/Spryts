@@ -43,12 +43,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var frontPopup = ""
     private var weatherClock: CGFloat = 0
     private var maker: SprytMakerController?
+    private var welcome: WelcomeController?
     private var away: [String: CGFloat] = [:]
     private var statusItem: NSStatusItem!
     private var timer: Timer?
     private var last = CACurrentMediaTime()
     private var worldClock: CGFloat = 1
     private var quiet = false
+    private var displaySleeping = false
+    private var idleStep = 0
+    private var idleDt: CGFloat = 0
     private var restartRequested = false
 
     // Presence: is the person here, and for how long.
@@ -67,6 +71,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var grabbed: SprytCharacter?
     private var game: OrangeSmash?
     private let arcade = ArcadeController()
+    private var bystanderStep = 0
+    private var bystanderDt: CGFloat = 0
     private var engineItems: [NSMenuItem] = []
     private var hud: GameHUDController?
     private var dragging = false
@@ -191,6 +197,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let t = Timer(timeInterval: 1.0 / 60.0, target: self, selector: #selector(tick), userInfo: nil, repeats: true)
         RunLoop.main.add(t, forMode: .common)
         timer = t
+
+        observePowerState()
+
+        if !Onboarding.isCompleted {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.55) { [weak self] in
+                self?.openWelcome(fromStart: true)
+            }
+        }
+    }
+
+    private func observePowerState() {
+        let nc = NSWorkspace.shared.notificationCenter
+        nc.addObserver(self, selector: #selector(stageDidSleep), name: NSWorkspace.screensDidSleepNotification, object: nil)
+        nc.addObserver(self, selector: #selector(stageDidSleep), name: NSWorkspace.sessionDidResignActiveNotification, object: nil)
+        nc.addObserver(self, selector: #selector(stageDidWake), name: NSWorkspace.screensDidWakeNotification, object: nil)
+        nc.addObserver(self, selector: #selector(stageDidWake), name: NSWorkspace.sessionDidBecomeActiveNotification, object: nil)
+    }
+
+    @objc private func stageDidSleep() {
+        displaySleeping = true
+        stageView?.rendersContinuously = false
+        stageView?.isPlaying = false
+    }
+
+    @objc private func stageDidWake() {
+        displaySleeping = false
+        last = CACurrentMediaTime()
+        stageView?.rendersContinuously = true
+        stageView?.isPlaying = true
+        syncStageQuality()
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
@@ -210,6 +246,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        NSWorkspace.shared.notificationCenter.removeObserver(self)
+        welcome?.close()
+        endGame()
         for character in characters {
             character.session.stop()
             character.session.save()
@@ -366,6 +405,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let target = characters.first(where: { $0.hitRect.insetBy(dx: -20, dy: -20).contains(point) }) ?? characters.first
         guard let character = target, let panel = panels[character.sheet.id] else { return }
         for url in urls { character.session.attach(url) }
+        character.caughtFiles(urls.count)
         character.session.pinned = true
         panel.focus()
     }
@@ -453,6 +493,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             briefItem.state = Briefings.enabled ? .on : .off
             settings.addItem(briefItem)
         }
+        settings.addItem(NSMenuItem.separator())
+        let welcomeItem = NSMenuItem(title: "Welcome Guide…", action: #selector(openWelcomeFromMenu), keyEquivalent: "")
+        welcomeItem.target = self
+        settings.addItem(welcomeItem)
         settings.addItem(NSMenuItem.separator())
         let resetItem = NSMenuItem(title: "Reset \"Always allow\" choices", action: #selector(resetAlwaysAllow), keyEquivalent: "")
         resetItem.target = self
@@ -584,6 +628,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func toggleQuiet(_ sender: NSMenuItem) {
         quiet.toggle()
         sender.state = quiet ? .on : .off
+        syncStageQuality()
     }
 
     // MARK: Games
@@ -619,6 +664,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Task { @MainActor [weak self] in self?.game?.restart() }
         }
         game = newGame
+        syncStageQuality()
         let scoreboard = GameHUDController(state: newGame.state, tint: NSColor(hex: character.sheet.look.body))
         scoreboard.show()
         hud = scoreboard
@@ -635,8 +681,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if joy.isOffstage { joy.returnToStage(world: world, others: characters) }
         }
         for panel in panels.values { panel.hide() }
-        arcade.onClosed = { ArcadeScores.shared.reload() }
+        arcade.onClosed = { [weak self] in
+            ArcadeScores.shared.reload()
+            self?.syncStageQuality()
+            self?.refreshWorld()
+        }
         arcade.start(which, host: joy)
+        syncStageQuality()
     }
 
     func endGame() {
@@ -645,6 +696,89 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         game = nil
         hud?.close()
         hud = nil
+        syncStageQuality()
+    }
+
+    /// Scales SceneKit MSAA and refresh rate to match activity so idle and gameplay both stay light on CPU/GPU.
+    private func syncStageQuality() {
+        guard stageView != nil else { return }
+        let playing = arcade.playing != nil || game != nil
+        let wantedAA: SCNAntialiasingMode = playing ? .multisampling2X : .multisampling4X
+        if stageView.antialiasingMode != wantedAA {
+            stageView.antialiasingMode = wantedAA
+        }
+        let wantedFPS: Int
+        if playing || grabbed != nil {
+            wantedFPS = 60
+        } else if isAway {
+            wantedFPS = 15
+        } else if quiet {
+            wantedFPS = 30
+        } else {
+            wantedFPS = 60
+        }
+        if stageView.preferredFramesPerSecond != wantedFPS {
+            stageView.preferredFramesPerSecond = wantedFPS
+        }
+    }
+
+    @objc private func openWelcomeFromMenu() {
+        openWelcome(fromStart: true)
+    }
+
+    private func openWelcome(fromStart: Bool) {
+        if welcome == nil {
+            welcome = WelcomeController(
+                characters: characters,
+                onWave: { [weak self] id in
+                    guard let self, let character = self.characters.first(where: { $0.sheet.id == id }) else { return }
+                    character.wake()
+                    if character.isOffstage { character.returnToStage(world: self.world, others: self.characters) }
+                    character.greeted(from: self.world.frame.midX)
+                },
+                onEngineChanged: { [weak self] engine in
+                    guard let self else { return }
+                    let idx = engine == "grok" ? 1 : 0
+                    for (index, item) in self.engineItems.enumerated() {
+                        item.state = index == idx ? .on : .off
+                    }
+                },
+                onFinish: { [weak self] action in
+                    self?.handleWelcomeFinish(action)
+                }
+            )
+        }
+        welcome?.show(fromStart: fromStart)
+    }
+
+    private func handleWelcomeFinish(_ action: WelcomeLaunchAction) {
+        switch action {
+        case .justDesktop:
+            break
+        case .pipToday:
+            if let pip = characters.first(where: { ($0.sheet.role ?? "generalist") == "generalist" }) {
+                openWorkspace(pip.sheet.id)
+                if let desk = workspaces[pip.sheet.id] as? DeskController {
+                    desk.showToday()
+                }
+            }
+        case .novaIDE:
+            if let nova = characters.first(where: { $0.sheet.role == "coder" }) {
+                openWorkspace(nova.sheet.id)
+            }
+        case .drizzleWeather:
+            if let drizzle = characters.first(where: { $0.sheet.role == "forecaster" }) {
+                drizzle.wake()
+                if drizzle.isOffstage { drizzle.returnToStage(world: world, others: characters) }
+                if let drop = weatherDrops[drizzle.sheet.id] {
+                    if !drop.isVisible { drop.toggle() }
+                } else {
+                    openWorkspace(drizzle.sheet.id)
+                }
+            }
+        case .joyClimb:
+            startArcade(ArcadeGame.climb.rawValue)
+        }
     }
 
     @objc private func bringBack() {
@@ -703,9 +837,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: Frame loop
 
     @objc private func tick() {
+        if displaySleeping { return }
         let now = CACurrentMediaTime()
-        let dt = CGFloat(min(now - last, 0.05))
+        let rawDt = CGFloat(min(now - last, 0.05))
         last = now
+
+        let arcadeActive = arcade.playing != nil
+        let awayThrottle = isAway && !arcadeActive && game == nil && grabbed == nil
+        var dt = rawDt
+        if awayThrottle {
+            idleStep += 1
+            idleDt += rawDt
+            if idleStep < 4 { return }
+            dt = min(idleDt, 0.08)
+            idleStep = 0
+            idleDt = 0
+        } else {
+            idleStep = 0
+            idleDt = 0
+        }
+
         uptime += dt
         sinceRemark += dt
 
@@ -729,28 +880,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         worldClock += dt
         if worldClock > 0.25 {
             worldClock = 0
-            var own: Set<Int> = []
-            for character in characters {
-                if let controller = workspaces[character.sheet.id], controller.isOpen, controller.tethers {
-                    own.insert(controller.number)
-                    character.homePlatform = controller.number
-                    character.perched = controller.isKey
-                } else {
-                    character.homePlatform = nil
-                    character.perched = false
+            if !arcadeActive && !isAway {
+                // Every visible normal-level Spryts window (Pip's desk, Welcome Guide, Maker, etc.)
+                // occludes windows behind it so characters never stand on hidden ledges inside our windows.
+                var own: Set<Int> = []
+                for w in NSApp.windows where w.isVisible && !w.isMiniaturized && w.level == .normal {
+                    own.insert(w.windowNumber)
                 }
+                for character in characters {
+                    if let controller = workspaces[character.sheet.id], controller.isOpen, controller.tethers {
+                        own.insert(controller.number)
+                        character.homePlatform = controller.number
+                        character.perched = controller.isKey
+                    } else {
+                        character.homePlatform = nil
+                        character.perched = false
+                    }
+                }
+                world.ownWindows = own
+                refreshWorld()
             }
-            world.ownWindows = own
-            refreshWorld()
 
-            // Permission requests from running agents: route each to its character.
-            for item in Harness.newRequests(seen: &seenRequests) {
-                let owner = characters.first(where: { $0.session.harnessSession == item.sessionID })
-                    ?? characters.first(where: { $0.session.process != nil })
-                if let owner {
-                    owner.session.request(item)
-                } else {
-                    Harness.answer(item.id, allow: false)
+            // Permission requests from running agents: only poll disk when at least one agent is busy.
+            if characters.contains(where: { $0.session.busy }) {
+                for item in Harness.newRequests(seen: &seenRequests) {
+                    let owner = characters.first(where: { $0.session.harnessSession == item.sessionID })
+                        ?? characters.first(where: { $0.session.process != nil })
+                    if let owner {
+                        owner.session.request(item)
+                    } else {
+                        Harness.answer(item.id, allow: false)
+                    }
                 }
             }
 
@@ -766,6 +926,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             idleSeconds = secondsSinceInput()
             let hour = Calendar.current.component(.hour, from: Date())
             night = hour >= 22 || hour < 6
+            let wasAway = isAway
             if idleSeconds > 120 {
                 // The moment they step away, remember what was open, for "Where was I?" later.
                 if !isAway { FocusKeeper.shared.snapshotAway() }
@@ -776,6 +937,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 returned = true
                 returnedAfter = awayFor
             }
+            if isAway != wasAway { syncStageQuality() }
             if idleSeconds > 180 { activeStreak = 0 }
         }
         if idleSeconds < 60 { activeStreak += dt }
@@ -787,7 +949,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }) : nil
 
         // Speaking first: a hello, a welcome back, a nudge after a long stretch. Never more often than the gaps below.
-        if speakFirst && !quiet {
+        if speakFirst && !quiet && !(welcome?.isVisible ?? false) {
             if !saidHello && uptime > 3 {
                 saidHello = true
                 nudge(.hello, from: characters.first)
@@ -816,9 +978,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             breaks.tick(away: idleSeconds > 300)
         }
         var overAny = false
+        var updateBystanders = true
+        var stepBystanderDt = dt
+        if arcadeActive {
+            bystanderStep += 1
+            bystanderDt += dt
+            if bystanderStep >= 4 {
+                bystanderStep = 0
+                stepBystanderDt = bystanderDt
+                bystanderDt = 0
+                updateBystanders = true
+            } else {
+                updateBystanders = false
+            }
+        } else {
+            bystanderStep = 0
+            bystanderDt = 0
+        }
         for character in characters {
             let id = character.sheet.id
             guard let panel = panels[id] else { continue }
+            if arcadeActive && character.puppet == nil {
+                if panel.isVisible { panel.hide() }
+                if updateBystanders {
+                    character.attention = false
+                    character.panelOpen = false
+                    character.workspaceOpen = false
+                    character.inputTarget = nil
+                    character.update(dt: stepBystanderDt, world: world, mouse: mouse, quiet: true, others: characters, presence: presence)
+                    character.syncNode(origin: world.frame.origin)
+                }
+                continue
+            }
             let over = grabbed == nil && character.puppet == nil && character.hitRect.contains(mouse)
             if over { overAny = true }
             // A character in the wings takes clicks but doesn't open its popup on hover.
@@ -856,6 +1047,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
             character.attention = engaged || panel.isVisible
             character.panelOpen = panel.isVisible
+            character.workspaceOpen = expanded
+            character.inputTarget = panel.isVisible
+                ? CGPoint(x: panel.frame.midX, y: panel.frame.minY + 34)
+                : nil
             character.update(dt: dt, world: world, mouse: mouse, quiet: quiet, others: characters, presence: presence)
             character.syncNode(origin: world.frame.origin)
 
@@ -878,7 +1073,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             hud?.layout(over: game.state.over)
             if grabbed == nil && game.hovering(mouse) { overAny = true }
         }
-        window.ignoresMouseEvents = !(overAny || grabbed != nil)
+        let ignoreMouse = !(overAny || grabbed != nil)
+        if window.ignoresMouseEvents != ignoreMouse {
+            window.ignoresMouseEvents = ignoreMouse
+        }
     }
 
     // MARK: Click, double-click and drag
@@ -899,6 +1097,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             lastDragTime = CACurrentMediaTime()
             dragVelocity = CGVector(dx: 0, dy: 0)
             grabOffset = CGPoint(x: point.x - character.pos.x, y: point.y - character.pos.y)
+            syncStageQuality()
             break
         }
     }
@@ -915,11 +1114,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             character.beginDrag()
         }
         let now = CACurrentMediaTime()
-        let dt = CGFloat(max(now - lastDragTime, 0.001))
+        let dt = CGFloat(max(now - lastDragTime, 0.008))
         let vx = (point.x - lastDrag.x) / dt
         let vy = (point.y - lastDrag.y) / dt
         dragVelocity = CGVector(dx: dragVelocity.dx * 0.6 + vx * 0.4, dy: dragVelocity.dy * 0.6 + vy * 0.4)
-        character.drag(to: CGPoint(x: point.x - grabOffset.x, y: point.y - grabOffset.y), dx: point.x - lastDrag.x)
+        character.drag(to: CGPoint(x: point.x - grabOffset.x, y: point.y - grabOffset.y),
+                       dx: point.x - lastDrag.x, dy: point.y - lastDrag.y)
         lastDrag = point
         lastDragTime = now
     }
@@ -927,7 +1127,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func pointerUp(at point: CGPoint, clicks: Int) {
         guard let character = grabbed else { return }
         if dragging {
-            character.endDrag(velocity: dragVelocity)
+            // If the person paused briefly before letting go, decay stale throw speed so setting down gently works.
+            let heldStill = max(0, CACurrentMediaTime() - lastDragTime)
+            let releaseScale: CGFloat = heldStill > 0.06 ? CGFloat(exp(-(heldStill - 0.06) / 0.045)) : 1
+            let releaseVelocity = CGVector(dx: dragVelocity.dx * releaseScale, dy: dragVelocity.dy * releaseScale)
+            character.endDrag(velocity: releaseVelocity)
         } else if clicks >= 2 {
             // A double-click is a poke. Undo the pin change the first click made.
             if pendingClick != nil {
@@ -949,5 +1153,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         grabbed = nil
         dragging = false
+        syncStageQuality()
     }
 }

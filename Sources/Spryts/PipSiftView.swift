@@ -145,6 +145,7 @@ private struct SiftBriefView: View {
 
     @State private var focus = ""
     @State private var count: Int?
+    @State private var filtered = true
     @State private var working = false
     @State private var failure: String?
 
@@ -172,16 +173,20 @@ private struct SiftBriefView: View {
             }
         }
         .padding(16).frame(width: 340)
-        .task { count = await controller.keptPosts().count }
+        .task {
+            let sample = await controller.briefPosts()
+            count = sample.posts.count
+            filtered = sample.filtered
+        }
     }
 
     private var explanation: String {
         let posts: String
         switch count {
-        case .none: posts = "The latest posts Sift kept"
-        case .some(0): return "Sift hasn’t kept any posts yet. Scroll the feed, then try again."
-        case .some(1): posts = "The latest post Sift kept"
-        case .some(let number): posts = "The latest \(number) posts Sift kept"
+        case .none: posts = "The latest posts on this feed"
+        case .some(0): return "No readable posts on the page yet. Scroll the feed, then try again."
+        case .some(1): posts = filtered ? "The latest post Sift kept" : "The latest visible post on this page (unfiltered)"
+        case .some(let number): posts = filtered ? "The latest \(number) posts Sift kept" : "The latest \(number) visible posts on this page (unfiltered)"
         }
         return posts + " will be sent to \(engineName) so \(session.sheet.name) can read them. Nothing is posted, liked or followed."
     }
@@ -192,11 +197,14 @@ private struct SiftBriefView: View {
         failure = nil
         Task { @MainActor in
             defer { working = false }
-            let posts = await controller.keptPosts()
+            let sample = await controller.briefPosts()
+            count = sample.posts.count
+            filtered = sample.filtered
             do {
                 let settings = controller.store.settings
-                let request = try SiftEvidence.build(posts: posts, feed: settings.feedName, readAt: Date(),
-                                                     filters: settings.summary, focus: focus)
+                let filters = sample.filtered ? settings.summary : ["Unfiltered (Sift couldn't read X's current page layout)"]
+                let request = try SiftEvidence.build(posts: sample.posts, feed: settings.feedName, readAt: Date(),
+                                                     filters: filters, focus: focus)
                 guard session.preparePipConversation(title: "X Brief · " + settings.feedName, request: request) else {
                     failure = "\(session.sheet.name) couldn’t start a new chat. Finish or save the current one, then try again."
                     return

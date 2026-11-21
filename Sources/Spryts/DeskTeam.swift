@@ -63,7 +63,7 @@ struct DeskTeamView: View {
                     SectionTitle(text: "Delegated work")
                     Spacer()
                     Button("Plan with \(chief.sheet.name)", systemImage: "text.bubble") {
-                        chief.draft = "Help me plan a project and bring in the right Spryts. "
+                        chief.prefillDraft("Help me plan a project and bring in the right Spryts. ")
                         chief.focusTick += 1
                     }
                     .buttonStyle(.bordered)

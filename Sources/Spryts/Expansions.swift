@@ -81,6 +81,12 @@ final class DeskController: NSObject, Expansion, NSWindowDelegate {
     var number: Int { window.windowNumber }
     var tethers: Bool { false }
 
+    func showToday() {
+        if let split = window.contentViewController as? PipSplitController {
+            split.openToday()
+        }
+    }
+
     func show() {
         let placedBefore = UserDefaults.standard.string(forKey: "NSWindow Frame " + window.frameAutosaveName) != nil
         if !window.isVisible, !placedBefore, let screen = NSScreen.main ?? NSScreen.screens.first {
@@ -398,7 +404,6 @@ struct StudioView: View {
     @ObservedObject var bridge: EditorBridge
     let name: String
     let tint: Color
-    @State private var ask = ""
 
     private let paper = Color(red: 0.99, green: 0.975, blue: 0.94)
     private let ink = Color(red: 0.13, green: 0.12, blue: 0.11)
@@ -589,7 +594,7 @@ struct StudioView: View {
                 .onChange(of: session.messages) { proxy.scrollTo("end", anchor: .bottom) }
             }
             Divider()
-            TextField("Ask \(name) about this draft…", text: $ask)
+            TextField("Ask \(name) about this draft…", text: $session.draft)
                 .textFieldStyle(.plain)
                 .font(.system(size: 13))
                 .padding(12)
@@ -649,9 +654,9 @@ struct StudioView: View {
     }
 
     private func askAboutDraft() {
-        let question = ask.trimmingCharacters(in: .whitespacesAndNewlines)
+        let question = session.draft.trimmingCharacters(in: .whitespacesAndNewlines)
         if question.isEmpty || session.busy { return }
-        ask = ""
+        session.draft = ""
         bridge.savedRange = nil
         let prompt = question + "\n\n(The current draft, for context:\n" + String(model.text.prefix(10000)) + "\n)"
         session.ask(display: question, prompt: prompt)

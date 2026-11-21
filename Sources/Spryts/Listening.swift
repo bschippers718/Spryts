@@ -8,7 +8,7 @@ import Foundation
 
 /// What a line of text feels like, in the few ways a small body can show.
 enum Feeling: String, CaseIterable {
-    case neutral, greeting, farewell, thanks, praise, love, joy, laughing, sad, worried, frustrated, urgent, sleepy
+    case neutral, greeting, farewell, thanks, praise, love, joy, laughing, surprised, curious, sad, worried, frustrated, urgent, sleepy
 }
 
 /// What the Spryt took from the words.
@@ -32,16 +32,19 @@ enum Listening {
     /// Single words. A negator just before one turns it around ("not happy", "no problem").
     private static let words: [Feeling: [String: CGFloat]] = [
         .greeting: ["hi": 1, "hello": 1, "hey": 1, "hiya": 1, "howdy": 1, "yo": 0.7, "morning": 0.8, "gm": 0.8, "sup": 0.7, "greetings": 1],
-        .farewell: ["bye": 1, "goodbye": 1, "goodnight": 1, "gn": 0.8, "cya": 1, "later": 0.3, "farewell": 1, "ttyl": 1],
-        .thanks: ["thanks": 1, "thank": 1, "thx": 1, "ty": 0.8, "cheers": 0.7, "appreciate": 1, "appreciated": 1, "grateful": 1],
+        .farewell: ["bye": 1, "goodbye": 1, "goodnight": 1, "gn": 0.8, "cya": 1, "later": 0.3, "farewell": 1, "ttyl": 1, "brb": 0.7],
+        .thanks: ["thanks": 1, "thank": 1, "thx": 1, "ty": 0.8, "tysm": 1, "cheers": 0.7, "appreciate": 1, "appreciated": 1, "grateful": 1, "lifesaver": 1],
         .praise: ["great": 0.8, "awesome": 1, "amazing": 1, "perfect": 1, "brilliant": 1, "excellent": 1, "nice": 0.7,
                   "good": 0.5, "cool": 0.6, "wonderful": 1, "fantastic": 1, "incredible": 1, "beautiful": 0.9, "nailed": 1,
-                  "impressive": 1, "bravo": 1, "solid": 0.6, "superb": 1, "lovely": 0.8, "clever": 0.8, "genius": 1],
+                  "impressive": 1, "bravo": 1, "solid": 0.6, "superb": 1, "lovely": 0.8, "clever": 0.8, "genius": 1,
+                  "epic": 0.9, "legend": 0.9, "crushed": 0.8],
         .love: ["love": 1, "adore": 1, "heart": 0.6, "hug": 0.9, "hugs": 0.9, "xoxo": 1, "cute": 0.8, "sweet": 0.6],
         .joy: ["yay": 1, "woohoo": 1, "woo": 0.9, "hooray": 1, "hurray": 1, "excited": 1, "happy": 0.9, "thrilled": 1,
                "celebrate": 1, "congrats": 1, "congratulations": 1, "shipped": 0.9, "launched": 0.9, "won": 0.9, "finally": 0.6,
-               "delighted": 1, "stoked": 1, "pumped": 1, "yes": 0.3, "yesss": 1, "wow": 0.8],
+               "delighted": 1, "stoked": 1, "pumped": 1, "yes": 0.3, "yesss": 1, "wow": 0.8, "boom": 0.8],
         .laughing: ["haha": 1, "hahaha": 1, "hahahaha": 1, "lol": 0.9, "lmao": 1, "rofl": 1, "hehe": 0.8, "funny": 0.7, "hilarious": 1],
+        .surprised: ["whoa": 1, "woah": 1, "omg": 1, "unreal": 0.9, "shocked": 1, "shocking": 0.9, "wild": 0.6, "insane": 0.7],
+        .curious: ["hmm": 0.9, "hmmm": 1, "interesting": 0.8, "curious": 1, "wonder": 0.7, "wondering": 0.8, "intrigued": 0.9],
         .sad: ["sad": 1, "unhappy": 1, "upset": 0.9, "lonely": 1, "miss": 0.6, "lost": 0.6, "crying": 1, "cried": 1, "hurt": 0.8,
                "hurts": 0.8, "heartbroken": 1, "depressed": 1, "down": 0.2, "rough": 0.7, "tough": 0.6, "awful": 0.9,
                "terrible": 0.9, "sorry": 0.5, "disappointed": 0.9, "failed": 0.7, "grief": 1, "died": 1],
@@ -58,15 +61,17 @@ enum Listening {
     /// Longer turns of phrase, matched whole.
     private static let phrases: [(Feeling, CGFloat, String)] = [
         (.greeting, 1, "good morning"), (.greeting, 1, "good afternoon"), (.greeting, 1, "good evening"), (.greeting, 0.9, "whats up"),
+        (.greeting, 1, "hey there"), (.greeting, 1, "hi there"),
         (.farewell, 1, "good night"), (.farewell, 1, "see you"), (.farewell, 1, "see ya"), (.farewell, 1, "talk later"),
-        (.farewell, 1, "signing off"), (.farewell, 0.9, "im off"),
-        (.thanks, 1, "thank you"), (.thanks, 1, "much appreciated"), (.thanks, 1, "you rock"),
+        (.farewell, 1, "signing off"), (.farewell, 0.9, "im off"), (.farewell, 1, "gotta go"), (.farewell, 1, "catch you later"),
+        (.thanks, 1, "thank you"), (.thanks, 1, "much appreciated"), (.thanks, 1, "you rock"), (.thanks, 1, "appreciate it"),
         (.praise, 1, "good job"), (.praise, 1, "great job"), (.praise, 1, "nice work"), (.praise, 1, "well done"),
         (.praise, 1, "nailed it"), (.praise, 1, "love it"), (.praise, 1, "youre the best"), (.praise, 0.9, "looks good"),
-        (.praise, 0.8, "not bad"),
+        (.praise, 0.8, "not bad"), (.praise, 1, "crushed it"), (.praise, 1, "well played"), (.praise, 0.9, "spot on"),
         (.love, 1, "love you"), (.love, 1, "miss you"),
         (.joy, 1, "we did it"), (.joy, 1, "i did it"), (.joy, 1, "it works"), (.joy, 1, "it worked"), (.joy, 1, "lets go"),
-        (.joy, 1, "good news"), (.joy, 1, "cant wait"), (.joy, 0.9, "so happy"),
+        (.joy, 1, "good news"), (.joy, 1, "cant wait"), (.joy, 0.9, "so happy"), (.joy, 1, "first try"),
+        (.surprised, 1, "no way"), (.surprised, 1, "mind blown"), (.surprised, 0.9, "wait what"),
         (.sad, 1, "bad day"), (.sad, 1, "rough day"), (.sad, 1, "long day"), (.sad, 1, "bad news"), (.sad, 1, "not great"),
         (.sad, 1, "not good"), (.sad, 0.9, "feeling down"), (.sad, 1, "passed away"),
         (.worried, 1, "not sure"), (.worried, 1, "freaking out"), (.worried, 1, "what if"), (.worried, 0.8, "i dont know"),
@@ -78,8 +83,11 @@ enum Listening {
     ]
 
     private static let symbols: [(Feeling, CGFloat, [String])] = [
-        (.joy, 1, [":)", ":-)", ":D", "😀", "😃", "😄", "😁", "🙂", "😊", "🎉", "🥳", "🙌", "✨", "👍"]),
+        (.joy, 1, [":)", ":-)", ":D", "😀", "😃", "😄", "😁", "🙂", "😊", "🎉", "🥳", "🙌", "✨", "👍", "🚀", "🎊"]),
+        (.praise, 1, ["🔥", "👏", "💯", "⭐"]),
         (.laughing, 1, ["😂", "🤣", "😆", "xD", "XD"]),
+        (.surprised, 1, ["🤯", "😮", "😲", "😳"]),
+        (.curious, 1, ["🤔", "🧐"]),
         (.love, 1, ["❤", "😍", "🥰", "💕", "💖", "😘", "<3"]),
         (.sad, 1, [":(", ":-(", ":'(", "😢", "😭", "😞", "😔", "🥺", "💔"]),
         (.worried, 1, ["😟", "😰", "😬", "😨", "🫠"]),
@@ -95,7 +103,9 @@ enum Listening {
     /// Words that ask for a move, longest first, and the move in the catalogue each one means.
     private static let moveWords: [(String, String)] = [
         ("jumping jacks", "jacks"), ("jumping jack", "jacks"), ("victory lap", "lap"), ("high kicks", "kicks"),
-        ("high kick", "kicks"), ("backflip", "flip"), ("somersault", "flip"), ("moonwalk", "moonwalk"), ("cartwheel", "flip"),
+        ("high kick", "kicks"), ("triple hops", "hops"), ("triple hop", "hops"), ("back flip", "flip"),
+        ("front flip", "flip"), ("frontflip", "flip"), ("backflip", "flip"), ("somersault", "flip"),
+        ("moonwalk", "moonwalk"), ("cartwheel", "flip"), ("hops", "hops"),
         ("jump", "jump"), ("hop", "jump"), ("flip", "flip"), ("spin", "spin"), ("twirl", "twirl"), ("pirouette", "twirl"),
         ("dance", "dance"), ("boogie", "dance"), ("wave", "wave"), ("bow", "bow"), ("wiggle", "wiggle"), ("shimmy", "shimmy"),
         ("stretch", "stretch"), ("flex", "flex"), ("stomp", "stomp"), ("kick", "kicks"), ("swing", "swing"), ("lap", "lap"),
@@ -186,14 +196,28 @@ enum Listening {
             }
         }
         tally(said, weight: 1)
+        let tail = String(trimmed.suffix(280))
+        let activeScope: String
+        let earlierText: String
+        if let range = tail.range(of: sentence, options: .backwards) {
+            activeScope = String(tail[range.lowerBound...])
+            earlierText = String(tail[..<range.lowerBound])
+        } else {
+            activeScope = sentence
+            earlierText = ""
+        }
         if all.count > said.count { tally(Array(all.dropLast(said.count)), weight: 0.33) }
-        for (feeling, value, marks) in symbols where marks.contains(where: { trimmed.contains($0) }) {
-            scores[feeling, default: 0] += value * 1.2
+        for (feeling, value, marks) in symbols {
+            if marks.contains(where: { activeScope.contains($0) }) {
+                scores[feeling, default: 0] += value * 1.2
+            } else if !earlierText.isEmpty && scores.isEmpty && marks.contains(where: { earlierText.contains($0) }) {
+                scores[feeling, default: 0] += value * 0.4
+            }
         }
         // "Hi" is hello only at the start of what you are saying, and it fades as the sentence turns into a request.
         if let hello = scores[.greeting] {
             let opening = " " + said.prefix(3).joined(separator: " ") + " "
-            let opens = (said.first.map { words[.greeting]?[$0] != nil } ?? false) || trimmed.contains("👋")
+            let opens = (said.first.map { words[.greeting]?[$0] != nil } ?? false) || activeScope.contains("👋")
                 || phrases.contains { $0.0 == .greeting && opening.contains(" " + $0.2 + " ") }
             scores[.greeting] = opens ? hello * (said.count <= 3 ? 1 : 3 / CGFloat(said.count)) : nil
         }
@@ -225,7 +249,7 @@ enum Listening {
             let direct = previous == nil && said.count <= 6                           // "Jump!", "dance for me"
             let afterCue = previous.map { moveCues.contains($0) || (!name.isEmpty && $0 == name) } ?? false   // "please dance"
             let afterArticle = ["a", "the", "your", "some", "little"].contains(previous ?? "")
-                && before.contains(where: { moveCues.contains($0) || $0 == "me" || $0 == "us" || $0 == "give" })   // "do a flip", "give us a twirl"
+                && before.contains(where: { moveCues.contains($0) || $0 == "me" || $0 == "us" || $0 == "give" || $0 == "take" || $0 == "show" })   // "do a flip", "take a bow", "give us a twirl"
             let afterYou = previous == "you" && before.contains(where: { canYou.contains($0) })   // "can you jump"
             let called = !name.isEmpty && said.contains(name) && said.count <= 6       // "Pip, flip"
             if direct || afterCue || afterArticle || afterYou || called || said.count <= 2 { return move }
@@ -240,6 +264,7 @@ enum Listening {
         var attention: CGFloat = 0      // 0...1: how far it has turned to face you
         var lean: CGFloat = 0           // forward is positive
         var sway: CGFloat = 0           // side to side
+        var headYaw: CGFloat = 0        // subtle follow along the line being typed
         var headTilt: CGFloat = 0
         var headPitch: CGFloat = 0
         var bounce: CGFloat = 0         // points off the ground
@@ -257,10 +282,12 @@ enum Listening {
         var eyeOpen: CGFloat = 1
         var lookX: CGFloat = 0
         var lookY: CGFloat = 0
+        var twitch: CGFloat = 0         // ear / antenna perk
     }
 
     /// The cue for this instant. `energy` is how demonstrative this Spryt is (a writer is quieter than a coach).
-    static func cue(for ear: Ear, at t: CGFloat, energy: CGFloat) -> Cue {
+    /// `gazeY` points the eyes toward the input surface (negative looks down, positive looks up at a floating popup).
+    static func cue(for ear: Ear, at t: CGFloat, energy: CGFloat, gazeY: CGFloat = -0.35) -> Cue {
         var c = Cue()
         let a = min(1, max(0, ear.level))
         if a <= 0.001 { return c }
@@ -268,25 +295,28 @@ enum Listening {
         let r = ear.reading
         let s = r.strength * a * k
         let pace = ear.pace
+        let pause = min(1, max(0, (ear.quiet - 1.8) / 1.4))
+        let calmNews = r.feeling == .sad || r.feeling == .worried || r.feeling == .frustrated || r.feeling == .sleepy
+        let beat = calmNews ? 0 : ear.keyPulse * a * k
 
-        // Always, while you are writing to it: turned to you, leaning in, nodding at the speed you type,
-        // eyes crossing the line as it fills and dropping back at the end of it.
+        // Always, while you are writing to it: turned to you, leaning in, nodding smoothly at the speed you type,
+        // eyes crossing the line as it fills and easing gently back when you pause.
         c.attention = a
-        c.lean = (0.09 + 0.05 * pace) * a
-        c.headPitch = 0.06 * pace * a * sin(t * (5 + 7 * pace))
-        c.lookY = -0.35 * a
-        c.lookX = (CGFloat(ear.length % 42) / 42 - 0.5) * 0.7 * a
+        c.lean = (0.09 + 0.055 * pace) * a
+        c.headPitch = (0.065 * pace * sin(ear.nodPhase) + 0.028 * beat) * a
+        let activeX = ear.scanX * a
+        c.lookX = activeX * (1 - pause)
+        c.lookY = (gazeY * (1 - pause) + gazeY * 0.28 * pause) * a
+        c.headYaw = activeX * 0.28 * (1 - pause)
+        c.headTilt += 0.09 * pause * a * sin(t * 0.9)
+        c.bounce += 1.15 * beat
+        c.squash *= 1 + 0.022 * beat
+        c.twitch = max(c.twitch, 0.55 * beat)
         c.smile = 0.25 + 0.15 * a
         c.browLift = 0.2 * a
-        if ear.quiet > 2.5 {
-            // You have stopped to think. It waits, in no hurry.
-            c.headTilt += 0.08 * a * sin(t * 0.9)
-            c.lookY = -0.1 * a
-            c.lookX = 0
-        }
 
         if r.question {
-            c.headTilt += 0.2 * a
+            c.headTilt += 0.22 * a
             c.browLift += 0.4 * a
             c.browCock = a
         }
@@ -295,57 +325,76 @@ enum Listening {
             c.lean += 0.03 * a
         }
         if r.named {
-            c.browLift += 0.3 * a
-            c.eyeOpen = max(c.eyeOpen, 1 + 0.1 * a)
+            c.browLift += 0.35 * a
+            c.eyeOpen = max(c.eyeOpen, 1 + 0.12 * a)
+            c.twitch = max(c.twitch, (0.3 + 0.65 * ear.namedPulse) * a)
         }
         if r.move != nil {
             // It knows what is coming and can hardly wait.
-            c.bounce += 2 * a * k * abs(sin(t * 8))
-            c.armsOut += 0.25 * a
-            c.smile = max(c.smile, 0.9)
+            c.bounce += 2.4 * a * k * abs(sin(t * 8.5))
+            c.armsOut += 0.3 * a
+            c.smile = max(c.smile, 0.92)
+            c.twitch = max(c.twitch, 0.5 * a)
         }
         if r.excitement > 0 {
             let e = r.excitement * a * k
-            c.bounce += 2.5 * e * abs(sin(t * 9))
-            c.smile = max(c.smile, 0.5 + 0.4 * e)
+            c.bounce += 2.8 * e * abs(sin(t * 9))
+            c.smile = max(c.smile, 0.55 + 0.4 * e)
         }
 
         switch r.feeling {
         case .neutral:
             break
         case .greeting, .farewell:
-            c.handUp = (r.feeling == .greeting ? 0.55 : 0.4) * s
-            c.smile = max(c.smile, 0.9)
-            c.headTilt += r.feeling == .farewell ? 0.1 * s : 0
+            c.handUp = (r.feeling == .greeting ? 0.62 : 0.45) * s
+            c.smile = max(c.smile, 0.92)
+            c.headTilt += r.feeling == .farewell ? 0.12 * s : 0.05 * s * sin(t * 4)
         case .thanks:
             c.blush = s
             c.smile = 1
-            c.headPitch += 0.1 * s
-            c.sway = 0.06 * s * sin(t * 3)
+            c.headPitch += 0.12 * s
+            c.sway = 0.07 * s * sin(t * 3)
         case .praise:
-            c.blush = 0.7 * s
+            c.blush = 0.75 * s
             c.smile = 1
-            c.bounce += 2 * s * abs(sin(t * 7))
-            c.sway = 0.08 * s * sin(t * 5)
+            c.bounce += 2.4 * s * abs(sin(t * 7.5))
+            c.sway = 0.09 * s * sin(t * 5)
         case .love:
             c.blush = s
             c.smile = 1
-            c.headTilt += 0.15 * s
-            c.sway = 0.07 * s * sin(t * 2.6)
-            c.armsForward += 0.3 * s
-            c.elbows += 0.9 * s
+            c.headTilt += 0.16 * s
+            c.sway = 0.08 * s * sin(t * 2.6)
+            c.armsForward += 0.32 * s
+            c.elbows += 0.95 * s
         case .joy:
-            c.bounce += 3 * s * abs(sin(t * 8))
-            c.armsOut += 0.5 * s
+            c.bounce += 3.4 * s * abs(sin(t * 8.5))
+            c.armsOut += 0.55 * s
             c.smile = 1
-            c.mouth = 0.25 * s
+            c.mouth = 0.28 * s
         case .laughing:
-            c.bounce += 3.5 * s * abs(sin(t * 11))
-            c.squash = 1 - 0.04 * s * abs(sin(t * 11))
+            c.bounce += 3.8 * s * abs(sin(t * 11))
+            c.squash = 1 - 0.045 * s * abs(sin(t * 11))
             c.lean -= 0.06 * s
             c.smile = 1
-            c.mouth = 0.5 * s
+            c.mouth = 0.55 * s
             c.eyeOpen = 1 - 0.5 * s
+        case .surprised:
+            c.lean -= 0.1 * s
+            c.bounce += 2.2 * s * abs(sin(t * 7))
+            c.armsOut += 0.5 * s
+            c.browLift += 0.85 * s
+            c.eyeOpen = max(c.eyeOpen, 1 + 0.22 * s)
+            c.mouth = max(c.mouth, 0.45 * s)
+            c.smile = 0.2
+            c.twitch = max(c.twitch, 0.75 * s)
+        case .curious:
+            c.lean += 0.1 * s
+            c.headTilt += 0.24 * s
+            c.browCock = max(c.browCock, s)
+            c.browLift += 0.35 * s
+            c.armsForward += 0.26 * s
+            c.elbows += 0.85 * s
+            c.smile = 0.2 + 0.15 * s
         case .sad:
             c.lean += 0.08 * s
             c.headTilt += 0.16 * s
@@ -390,30 +439,45 @@ enum Listening {
         }
 
         if r.shouting {
-            c.lean -= 0.05 * a
-            c.eyeOpen = max(c.eyeOpen, 1.12)
+            c.lean -= 0.06 * a
+            c.eyeOpen = max(c.eyeOpen, 1 + 0.14 * a)
         }
         // Brief things, layered last: a paste or a shout startles it, deleting makes it wonder, clearing the box lets it breathe out.
         let jolt = ear.surprise * a
         c.lean -= 0.16 * jolt
+        c.bounce += 1.4 * jolt
         c.eyeOpen += 0.25 * jolt
         c.armsOut += 0.5 * jolt
         c.browLift += 0.8 * jolt
         c.mouth = max(c.mouth, 0.4 * jolt)
+        c.twitch = max(c.twitch, jolt)
         let wonder = ear.doubt * a
         c.headTilt -= 0.16 * wonder
+        c.headYaw -= 0.12 * wonder
         c.browCock = max(c.browCock, wonder)
-        c.squash *= 1 - 0.03 * ear.letGo
+        c.squash *= 1 - 0.035 * ear.letGo
 
         c.lean = min(0.3, max(-0.25, c.lean))
+        c.sway = min(0.25, max(-0.25, c.sway))
+        c.headYaw = min(0.45, max(-0.45, c.headYaw))
         c.headTilt = min(0.4, max(-0.4, c.headTilt))
+        c.headPitch = min(0.35, max(-0.35, c.headPitch))
         c.bounce = min(9, max(-3, c.bounce))
+        c.squash = min(1.12, max(0.88, c.squash))
+        c.armsOut = min(1.5, max(0, c.armsOut))
+        c.armsForward = min(0.85, max(0, c.armsForward))
+        c.elbows = min(1.8, max(0, c.elbows))
         c.eyeOpen = min(1.25, max(0.3, c.eyeOpen))
-        c.browLift = min(1, c.browLift)
+        c.brow = min(0.8, max(-0.8, c.brow))
+        c.browLift = min(1, max(0, c.browLift))
+        c.browCock = min(1, max(0, c.browCock))
         c.smile = min(1, max(-0.6, c.smile))
-        c.blush = min(1, c.blush)
-        c.mouth = min(1, c.mouth)
-        c.handUp = min(1, c.handUp)
+        c.blush = min(1, max(0, c.blush))
+        c.mouth = min(1, max(0, c.mouth))
+        c.handUp = min(1, max(0, c.handUp))
+        c.lookX = min(1, max(-1, c.lookX))
+        c.lookY = min(1, max(-1, c.lookY))
+        c.twitch = min(1, max(0, c.twitch))
         return c
     }
 
@@ -442,6 +506,10 @@ enum Listening {
             return reading.strength > 0.6 ? .hop(emote: "♪") : .gesture("pump", emote: "♪")
         case .laughing:
             return .gesture("shimmy", emote: "♪")
+        case .surprised:
+            return .hop(emote: "!")
+        case .curious:
+            return .gesture("think", emote: "?")
         case .sad, .worried:
             return .gesture("nod", emote: nil)
         case .frustrated:
@@ -462,6 +530,10 @@ struct Ear: Equatable {
     private(set) var reading = Reading()
     private(set) var level: CGFloat = 0        // 0 not listening ... 1 all ears
     private(set) var pace: CGFloat = 0         // 0...1, how fast you are typing
+    private(set) var nodPhase: CGFloat = 0     // integrated nod phase, so speed changes never jump
+    private(set) var keyPulse: CGFloat = 0     // short perk on each keystroke
+    private(set) var namedPulse: CGFloat = 0   // short perk when called by name
+    private(set) var scanX: CGFloat = 0        // smoothed eye position across the current line
     private(set) var surprise: CGFloat = 0     // a paste, or sudden capitals
     private(set) var doubt: CGFloat = 0        // you are deleting
     private(set) var letGo: CGFloat = 0        // the box was just emptied
@@ -469,9 +541,10 @@ struct Ear: Equatable {
     private(set) var quiet: CGFloat = 99       // seconds since the draft last changed
     private(set) var sent = ""                 // what was in the box when it emptied
     private(set) var sinceEmptied: CGFloat = 99
+    private var scanTarget: CGFloat = 0
     private var text = ""
 
-    mutating func heard(_ draft: String, name: String) {
+    mutating func heard(_ draft: String, name: String, programmatic: Bool = false) {
         if draft == text { return }
         let count = draft.count
         let delta = count - length
@@ -479,29 +552,39 @@ struct Ear: Equatable {
             sent = text
             sinceEmptied = 0
             letGo = 1
-        } else if delta >= 12 {
-            surprise = 1                                        // pasted in one go
-        } else if delta > 0 {
-            pace = min(1, pace + 0.16 * CGFloat(delta))
-        } else if delta < 0 {
-            doubt = min(1, doubt + 0.18 * CGFloat(-delta))
+        } else if !programmatic {
+            if delta >= 12 {
+                surprise = 1                                    // pasted in one go
+            } else if delta > 0 {
+                pace = min(1, pace + 0.16 * CGFloat(delta))
+                keyPulse = min(1, keyPulse + 0.45)
+            } else if delta < 0 {
+                doubt = min(1, doubt + 0.18 * CGFloat(-delta))
+            }
         }
         let before = reading
         reading = draft.isEmpty ? Reading() : Listening.read(draft, name: name)
-        if reading.shouting && !before.shouting { surprise = max(surprise, 0.8) }
+        if !programmatic && reading.shouting && !before.shouting { surprise = max(surprise, 0.8) }
+        if reading.named && !before.named { namedPulse = 1 }
+        let lineLength = draft.split(separator: "\n", omittingEmptySubsequences: false).last?.count ?? 0
+        scanTarget = draft.isEmpty ? 0 : (CGFloat(lineLength % 42) / 42 - 0.5) * 0.75
         text = draft
         length = count
         quiet = 0
     }
 
-    /// `attending` is whether its chat is open in front of you.
+    /// `attending` is whether its chat or workspace is open in front of you.
     mutating func tick(_ dt: CGFloat, attending: Bool) {
         quiet += dt
         sinceEmptied += dt
+        nodPhase = (nodPhase + dt * (4.5 + 8 * pace)).truncatingRemainder(dividingBy: 200 * CGFloat.pi)
         pace *= exp(-dt / 0.7)
+        keyPulse *= exp(-dt / 0.14)
+        namedPulse *= exp(-dt / 0.45)
         surprise *= exp(-dt / 0.9)
         doubt *= exp(-dt / 1.2)
         letGo *= exp(-dt / 0.8)
+        scanX += (scanTarget - scanX) * min(1, dt * 10)
         var target: CGFloat = 0
         if length > 0 {
             if quiet < 2.5 { target = 1 } else if attending { target = quiet < 20 ? 0.6 : 0.25 }

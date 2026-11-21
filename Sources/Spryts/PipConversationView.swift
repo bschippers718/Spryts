@@ -158,9 +158,9 @@ struct PipConversationView: View {
     private func starter(_ title: String, symbol: String, prompt: String) -> some View {
         Button {
             if session.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                session.draft = prompt
+                session.prefillDraft(prompt)
             } else {
-                session.draft += "\n\n" + prompt
+                session.prefillDraft(session.draft + "\n\n" + prompt)
             }
             typing = true
         } label: {

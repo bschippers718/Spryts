@@ -198,6 +198,12 @@ final class SiftWebController: NSObject, ObservableObject, WKNavigationDelegate,
         }
     }
 
+    /// Posts read from the page for a brief, and whether Sift filtered them.
+    struct FeedSample: Equatable {
+        let posts: [SiftPost]
+        let filtered: Bool
+    }
+
     /// The most recent posts Sift kept. Read only when the person asks Pip for a brief.
     func keptPosts() async -> [SiftPost] {
         guard engine != nil else { return [] }
@@ -212,6 +218,25 @@ final class SiftWebController: NSObject, ObservableObject, WKNavigationDelegate,
             }
         }
         return SiftPost.parse(json)
+    }
+
+    /// Reads posts for Brief: prefers Sift's kept registry, and falls back to visible `<article>` posts
+    /// when X's layout prevents Sift from matching `article[data-testid="tweet"]`.
+    func briefPosts() async -> FeedSample {
+        let kept = await keptPosts()
+        if !kept.isEmpty { return FeedSample(posts: kept, filtered: true) }
+        guard engine != nil else { return FeedSample(posts: [], filtered: false) }
+        let json: String = await withCheckedContinuation { continuation in
+            webView.callAsyncJavaScript("return globalThis.__siftBridge ? globalThis.__siftBridge.visiblePosts(limit) : \"[]\";",
+                                        arguments: ["limit": SiftEvidence.maximumPosts], in: nil, in: world) { result in
+                if case .success(let value) = result, let text = value as? String {
+                    continuation.resume(returning: text)
+                } else {
+                    continuation.resume(returning: "[]")
+                }
+            }
+        }
+        return FeedSample(posts: SiftPost.parse(json), filtered: false)
     }
 
     /// Forgets the X sign-in kept by this app. Safari and Chrome are untouched.
@@ -381,6 +406,7 @@ final class SiftWebController: NSObject, ObservableObject, WKNavigationDelegate,
         func number(_ key: String) -> Int { (report[key] as? NSNumber)?.intValue ?? 0 }
         if let error = report["error"] as? String, !error.isEmpty { return false }
         if number("articles") > 0 { return number("read") >= number("articles") }
+        if number("anyArticle") > 0 || number("roleArticle") > 0 { return number("read") > 0 }
         return number("cells") < 3          // an empty timeline is fine; a full one with no posts Sift knows is not
     }
 

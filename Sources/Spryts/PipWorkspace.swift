@@ -273,15 +273,22 @@ struct PipDetailView: View {
                     destinationContent.frame(minWidth: 420, maxWidth: .infinity, maxHeight: .infinity)
                     if navigation.showInspector {
                         VStack(spacing: 0) {
-                            HStack {
+                            HStack(spacing: 8) {
                                 Button { navigation.showCurrentChat() } label: {
-                                    Text(library.activeConversation?.title ?? "Chat with " + session.sheet.name).lineLimit(1)
-                                }.buttonStyle(.plain).font(.system(size: 12, weight: .semibold))
+                                    VStack(alignment: .leading, spacing: 1) {
+                                        Text(library.activeConversation?.title ?? "Chat with " + session.sheet.name)
+                                            .font(.system(size: 12, weight: .semibold)).lineLimit(1)
+                                        if navigation.destination == .today {
+                                            Text("Ask questions or modify Today")
+                                                .font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1)
+                                        }
+                                    }
+                                }.buttonStyle(.plain)
                                 Spacer()
                                 Button { navigation.showInspector = false } label: { Image(systemName: "sidebar.right") }
                                     .buttonStyle(.borderless).disabled(session.approval != nil)
                                     .help("Hide conversation")
-                            }.padding(14)
+                            }.padding(.horizontal, 14).padding(.vertical, 11)
                             Divider()
                             PipConversationView(session: session, name: session.sheet.name, tint: tint, compact: true)
                         }.frame(minWidth: 300, idealWidth: 340, maxWidth: 440)
@@ -321,7 +328,7 @@ struct PipDetailView: View {
             navigation.focusConversation()
         }
         .onChange(of: session.approval?.id) {
-            if session.approval != nil { navigation.showCurrentChat() }
+            if session.approval != nil { navigation.focusConversation() }
         }
         .onChange(of: session.busy) {
             if session.busy { navigation.focusConversation() }
@@ -363,23 +370,44 @@ struct PipDetailView: View {
                           onOpenConversation: { navigation.select(.conversation($0)) })
         case .today:
             ScrollView {
-                VStack(alignment: .leading, spacing: 26) {
+                VStack(alignment: .leading, spacing: 24) {
+                    TodayView(
+                        session: session,
+                        office: Office.of(session.sheet.id),
+                        name: session.sheet.name,
+                        tint: tint,
+                        railOpen: navigation.showInspector,
+                        onToggleRail: {
+                            if navigation.showInspector {
+                                if session.approval == nil { navigation.showInspector = false }
+                            } else {
+                                navigation.focusConversation()
+                                session.focusTick += 1
+                            }
+                        },
+                        onFocusRail: { prefill in
+                            navigation.focusConversation()
+                            if let prefill { session.prefillDraft(prefill) }
+                            session.focusTick += 1
+                        },
+                        onOpenFeed: { navigation.destination = .feed }
+                    )
+                    DeskTeamPreview(sessions: team, chiefID: session.sheet.id) { navigation.destination = .team }
                     HStack(spacing: 12) {
                         Image(systemName: "square.stack.3d.up").foregroundStyle(tint)
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("A useful place to start").font(.system(size: 14, weight: .semibold))
-                            Text("Prepare your day, get meeting-ready, or bring a project to life.")
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Reusable workflows").font(.system(size: 13, weight: .semibold))
+                            Text("Prepare for a meeting, sort paperwork, or kick off a project with Scenes.")
                                 .font(.system(size: 12)).foregroundStyle(.secondary)
                         }
                         Spacer()
-                        Button("Explore Scenes") { navigation.destination = .scenes }
-                    }.solidCard(corner: 12, padding: 18)
-                    TodayView(session: session, office: Office.of(session.sheet.id), name: session.sheet.name, tint: tint)
-                    DeskTeamPreview(sessions: team, chiefID: session.sheet.id) { navigation.destination = .team }
+                        Button("Explore Scenes") { navigation.destination = .scenes }.controlSize(.small)
+                    }.solidCard(corner: 14, padding: 14)
                 }.padding(28).frame(maxWidth: 1000, alignment: .leading).frame(maxWidth: .infinity, alignment: .top)
             }
         case .feed:
             PipSiftView(session: session, tint: tint) {
+                navigation.destination = .today
                 navigation.focusConversation()
                 session.focusTick += 1
             }
@@ -764,6 +792,11 @@ final class PipSplitController: NSSplitViewController, NSToolbarDelegate {
         default: return nil
         }
         return item
+    }
+
+    func openToday() {
+        navigation.destination = .today
+        refreshWindow()
     }
 
     @objc func newPipChat(_ sender: Any?) {

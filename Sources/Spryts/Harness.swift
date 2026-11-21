@@ -263,10 +263,12 @@ enum Harness {
     /// Environment variables that override the saved Claude Code login when they are set.
     static let credentialVariables = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN"]
 
+    private static let logDateFormatter = ISO8601DateFormatter()
+
     /// Appends a line to harness.log in the Spryts folder. Never logs keys or message text.
     static func log(_ line: String) {
         let file = Config.home.appendingPathComponent("harness.log")
-        let stamp = ISO8601DateFormatter().string(from: Date())
+        let stamp = logDateFormatter.string(from: Date())
         let entry = stamp + "  " + line.replacingOccurrences(of: "\n", with: " ") + "\n"
         guard let data = entry.data(using: .utf8) else { return }
         if let size = (try? FileManager.default.attributesOfItem(atPath: file.path))?[.size] as? Int, size > 200_000 {
@@ -561,11 +563,15 @@ extension ChatSession {
             + "\n- commitments.md: open loops, one per line: `- [ ] what · who · due YYYY-MM-DD · mine|waiting`. Tick (`[x]`) and date them when done; prune old ticked ones."
             + "\n- people/<name>.md: who someone is to them, what they last discussed, what's open between them. Update after anything that touches a person."
             + "\n- daily/YYYY-MM-DD.md: a few lines a day: what was planned, what happened, what moved to tomorrow."
-            + "\n- today.json: what their desk and your popup show. Rewrite it whenever you check the calendar or mail, in exactly this shape (all fields optional, times as HH:mm, 24-hour, local):"
-            + "\n  {\"date\":\"YYYY-MM-DD\",\"updated\":\"HH:mm\",\"events\":[{\"start\":\"09:30\",\"end\":\"10:00\",\"title\":\"\",\"place\":\"\",\"source\":\"apple|google\"}],"
-            + "\"focus\":[\"the one to three things that matter most today\"],\"followups\":[{\"what\":\"\",\"who\":\"\",\"due\":\"YYYY-MM-DD\",\"mine\":true}],"
-            + "\"inbox\":[{\"from\":\"\",\"subject\":\"\",\"why\":\"why it needs them\",\"source\":\"apple|google\"}]}"
-            + "\n  Events sorted by start, today only. followups mirrors the open lines in commitments.md (mine:false for things they're waiting on). inbox holds at most five messages that truly need them; never newsletters or receipts."
+            + "\n- today.json: the live interactive brief shown in Today (and in your popup strip). The person reads and interacts with Today directly, and uses the right-hand chat rail to ask questions or ask you to modify it. Rewrite today.json whenever you build a brief, check the calendar or mail, brief an X feed, or whenever the person asks to adjust today's brief, in this exact top-level shape (all fields optional, times as HH:mm, 24-hour, local):"
+            + "\n  {\"date\":\"YYYY-MM-DD\",\"updated\":\"HH:mm\",\"summary\":\"1-2 crisp sentences summing up today\","
+            + "\"events\":[{\"start\":\"09:30\",\"end\":\"10:00\",\"title\":\"\",\"place\":\"\",\"source\":\"apple|google\",\"prep\":\"optional 1-line prep note\"}],"
+            + "\"focus\":[{\"text\":\"the one to three things that matter most today\",\"why\":\"optional short reason\",\"done\":false}],"
+            + "\"followups\":[{\"what\":\"\",\"who\":\"\",\"due\":\"YYYY-MM-DD\",\"mine\":true,\"overdue\":false,\"done\":false}],"
+            + "\"inbox\":[{\"from\":\"\",\"subject\":\"\",\"why\":\"why it needs them\",\"source\":\"apple|google\"}],"
+            + "\"notes\":[\"optional short note if a source couldn't be reached\"],"
+            + "\"xBrief\":{\"feed\":\"My Feed\",\"updated\":\"HH:mm\",\"summary\":\"1-2 sentence takeaway\",\"themes\":[{\"title\":\"\",\"summary\":\"\",\"sources\":[\"https://x.com/...\"]}],\"actions\":[\"optional post worth replying to or reading\"]}}"
+            + "\n  Events sorted by start, today only. focus holds 1-3 priorities as objects (preserve any done:true the person checked off). followups mirrors open lines in commitments.md as objects (mine:false for things they're waiting on; never use bare strings). inbox holds at most five messages that truly need them; never newsletters or receipts. When briefing an X feed, write xBrief into today.json (preserving date/events/focus/followups/inbox/summary, setting date to today if absent) and keep only verified https://x.com post URLs in sources. When refreshing the daily brief, preserve any existing today xBrief."
         prompt += "\n\nWhere their day lives. They use both Apple's apps and Google; check both and merge, noting the source:"
             + "\n- Apple Calendar, Reminders and Mail through `osascript`. Keep scripts narrow so they're quick: today's events only "
             + "(`every event whose start date ≥ (current date's midnight) and start date < (midnight + 1 day)`), unread inbox mail from the last day, reminders due by today. "

@@ -64,7 +64,15 @@ private struct MemoryStore: Codable {
 final class ChatSession: ObservableObject {
     @Published var messages: [ChatMessage] = []
     @Published var draft = ""
+    /// True during programmatic draft updates (quick actions, completions, restored chats) so Listening doesn't treat them as a sudden paste.
+    private(set) var draftIsProgrammatic = false
     @Published var busy = false
+
+    func prefillDraft(_ text: String) {
+        draftIsProgrammatic = true
+        draft = text
+        draftIsProgrammatic = false
+    }
     @Published var pinned = false
     @Published private(set) var pipLibrary: PipLibrary?
     private var pipAutosave: AnyCancellable?
@@ -325,7 +333,7 @@ final class ChatSession: ObservableObject {
             // Keep the interruption visible even when its initial recovery write failed.
             messages.append(ChatMessage(role: "assistant", text: "This conversation was interrupted when Spryts closed. No work was restarted."))
         }
-        draft = snapshot.draft
+        prefillDraft(snapshot.draft)
         attachments = snapshot.attachments.map { URL(fileURLWithPath: $0) }
         projectFolder = snapshot.folder.map { URL(fileURLWithPath: $0) }
         facts = snapshot.facts

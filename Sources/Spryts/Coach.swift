@@ -342,14 +342,14 @@ struct TrainingRoomView: View {
                         session.ask(display: "How's my week?", prompt: "How is my week going against the plan? Numbers first, then what to do with the days left.")
                     }
                     chip("I'm sore") {
-                        session.draft = "I'm sore: "
+                        session.prefillDraft("I'm sore: ")
                         typing = true
                     }
                 }
                 HStack(spacing: 6) {
                     chip("Analyse my data…") { attachData() }
                     chip("Adjust my plan") {
-                        session.draft = "Adjust my plan: "
+                        session.prefillDraft("Adjust my plan: ")
                         typing = true
                     }
                 }
@@ -365,7 +365,7 @@ struct TrainingRoomView: View {
         panel.message = "Choose exports from Strava, Garmin, Apple Health, Whoop or similar."
         if panel.runModal() == .OK {
             for url in panel.urls { session.attach(url) }
-            session.draft = "Analyse this training data. Tell me what it shows before you recommend anything."
+            session.prefillDraft("Analyse this training data. Tell me what it shows before you recommend anything.")
             typing = true
         }
     }

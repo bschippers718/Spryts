@@ -61,7 +61,13 @@ struct ListeningChecks {
         expect(Listening.read("hey can you fix the login screen in the settings page").feeling != .greeting,
                "a greeting fades once the sentence becomes a request")
         feels("I had a rough day. But we shipped it!", .joy)
+        feels("I had a rough day :(. But we shipped it!", .joy)
+        feels("That worked. 😂", .laughing)
         feels("We shipped it! But now I'm exhausted", .sleepy)
+        feels("whoa no way!", .surprised)
+        feels("🤯", .surprised)
+        feels("hmm that's interesting", .curious)
+        feels("🤔", .curious)
         expect(Listening.read("we did it!!!").strength > Listening.read("we did it").strength, "exclamation marks make it stronger")
 
         // Marks and volume.
@@ -87,6 +93,11 @@ struct ListeningChecks {
         asks("let's dance", "dance")
         asks("show me your dance", "dance")
         asks("give us a twirl", "twirl")
+        asks("take a bow", "bow")
+        asks("do a triple hop", "hops")
+        asks("do a back flip", "flip")
+        asks("frontflip!", "flip")
+        asks("take a jump in conversion", nil)
         asks("don't jump", nil)
         asks("please do not dance", nil)
         asks("jump to the next section", nil)
@@ -118,6 +129,9 @@ struct ListeningChecks {
         var pasted = Ear()
         pasted.heard("Here is a long paragraph pasted in one go", name: "Pip")
         expect(pasted.surprise == 1, "a paste startles it")
+        var prefilled = Ear()
+        prefilled.heard("Give me five opening lines for a piece about ", name: "Pip", programmatic: true)
+        expect(prefilled.surprise == 0, "a quick-action prefill does not startle it")
         var deleting = Ear()
         type("this is wrong", into: &deleting)
         deleting.heard("this is", name: "Pip")
@@ -128,6 +142,27 @@ struct ListeningChecks {
         expect(sending.takeSent() == "do a flip" && sending.takeSent() == nil, "it catches what was sent, once")
         for _ in 0..<120 { sending.tick(1.0 / 60, attending: true) }
         expect(sending.level < 0.01 && sending.reading == Reading(), "and settles once the box is empty")
+
+        // Integrated nod phase stays smooth even after long uptime (no t * variableFreq jitter).
+        var longRun = Ear()
+        type("typing smoothly after a long session", into: &longRun, perSecond: 8)
+        var maxPitchStep: CGFloat = 0
+        var prevPitch = Listening.cue(for: longRun, at: 1200, energy: 1).headPitch
+        for step in 1...120 {
+            longRun.tick(1.0 / 60, attending: true)
+            let pitch = Listening.cue(for: longRun, at: 1200 + CGFloat(step) / 60, energy: 1).headPitch
+            maxPitchStep = max(maxPitchStep, abs(pitch - prevPitch))
+            prevPitch = pitch
+        }
+        expect(maxPitchStep < 0.03, "nodding stays smooth even at high uptime (max step \(maxPitchStep))")
+
+        // Gaze follows the popup direction when above the character.
+        var upward = Ear()
+        type("looking up at the popup", into: &upward, perSecond: 10)
+        expect(Listening.cue(for: upward, at: 1, energy: 1, gazeY: 0.42).lookY > 0.25, "looks up when the popup sits above it")
+        var namedEar = Ear()
+        type("hey Pip", into: &namedEar, perSecond: 10)
+        expect(Listening.cue(for: namedEar, at: 1, energy: 1).twitch > 0.2, "calling its name perks its ears/antenna")
 
         // What the body does with it.
         func cue(_ text: String, at t: CGFloat = 0.2, energy: CGFloat = 1) -> Listening.Cue {
@@ -146,12 +181,12 @@ struct ListeningChecks {
         expect(cue("THIS IS BROKEN AGAIN").lean < plain.lean, "shouting rocks it back")
         expect(cue("we did it!!!", energy: 0.4).bounce < cue("we did it!!!", energy: 1.2).bounce, "a quiet Spryt shows less than a lively one")
         var bounded = true
-        for feeling in ["hi", "bye", "thank you", "great job!!!", "love you", "WE DID IT!!!", "hahaha 😂", "rough day :(", "so worried",
-                        "ugh BROKEN", "asap!!! hurry", "so tired...", "do a flip?!"] {
+        for feeling in ["hi", "bye", "thank you", "great job!!!", "love you", "WE DID IT!!!", "hahaha 😂", "whoa no way 🤯",
+                        "hmm interesting 🤔", "rough day :(", "so worried", "ugh BROKEN", "asap!!! hurry", "so tired...", "do a flip?!"] {
             for step in 0..<200 {
                 let c = cue(feeling, at: CGFloat(step) * 0.05, energy: 1.3)
-                let values = [c.lean, c.sway, c.headTilt, c.headPitch, c.bounce / 10, c.armsOut / 2, c.armsForward, c.elbows / 2, c.handUp,
-                              c.smile, c.mouth, c.brow, c.browLift, c.blush, c.eyeOpen - 1, c.lookX, c.lookY, c.squash - 1]
+                let values = [c.lean, c.sway, c.headYaw, c.headTilt, c.headPitch, c.bounce / 10, c.armsOut / 2, c.armsForward, c.elbows / 2, c.handUp,
+                              c.smile, c.mouth, c.brow, c.browLift, c.blush, c.eyeOpen - 1, c.lookX, c.lookY, c.squash - 1, c.twitch]
                 if values.contains(where: { !$0.isFinite || abs($0) > 1.01 }) { bounded = false }
             }
         }
@@ -160,9 +195,13 @@ struct ListeningChecks {
         // The moment you press Return.
         func answer(_ text: String) -> Listening.Response { Listening.response(to: Listening.read(text, name: "Pip")) }
         expect(answer("do a flip") == .move("flip"), "asked to flip, it flips")
+        expect(answer("take a bow") == .move("bow"), "asked to take a bow, it bows")
+        expect(answer("do a triple hop") == .move("hops"), "asked for a triple hop, it hops three times")
         expect(answer("hello!") == .gesture("wave", emote: nil), "hello gets a wave")
         expect(answer("thank you") == .gesture("bow", emote: "♥"), "thanks gets a bow")
         expect(answer("WE DID IT!!!") == .hop(emote: "♪"), "big news gets a jump")
+        expect(answer("whoa no way!") == .hop(emote: "!"), "surprise gets a startled hop")
+        expect(answer("hmm interesting") == .gesture("think", emote: "?"), "curiosity gets a thoughtful look")
         expect(answer("what do you think?") == .gesture("think", emote: "?"), "a question gets a thoughtful look")
         expect(answer("I had a rough day") == .gesture("nod", emote: nil), "bad news gets a quiet nod, never a dance")
         expect(answer("Summarise the attached report in three bullets") == .nothing, "plain work gets no performance")

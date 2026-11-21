@@ -57,8 +57,12 @@ enum Leaderboard {
 /// Short system sounds, a few copies of each so quick hits can overlap.
 enum GameSound {
     private static var pool: [String: [NSSound]] = [:]
+    private static var lastPlayed: [String: TimeInterval] = [:]
 
     static func play(_ name: String, volume: Float = 0.35) {
+        let now = CACurrentMediaTime()
+        if let prev = lastPlayed[name], now - prev < 0.035 { return }
+        lastPlayed[name] = now
         var copies = pool[name] ?? []
         var chosen: NSSound?
         for sound in copies where !sound.isPlaying {
@@ -388,10 +392,32 @@ final class OrangeSmash {
 
     private var fruits: [Fruit] = []
     private var bits: [Bit] = []
-    private var peels: [Peel] = []
+    private var fallingPeels: [Peel] = []
+    private var landedPeels: [SCNNode] = []
     private var popups: [Popup] = []
     private var pile: [Int: CGFloat] = [:]   // how high the heap is in each narrow column of the screen
     private let column: CGFloat = 14
+
+    // Shared geometries/materials avoid per-spawn SceneKit buffer allocation and 3D glyph tessellation.
+    private var fruitTemplates: [Kind: SCNNode] = [:]
+    private var bitSpheres: [String: SCNSphere] = [:]
+    private lazy var whiteTrailSphere: SCNSphere = {
+        let s = SCNSphere(radius: 5)
+        s.segmentCount = 6
+        let m = SCNMaterial()
+        m.lightingModel = .constant
+        m.diffuse.contents = NSColor.white
+        s.firstMaterial = m
+        return s
+    }()
+    private lazy var orangePeelSphere: SCNSphere = makePeelSphere(gold: false)
+    private lazy var goldPeelSphere: SCNSphere = makePeelSphere(gold: true)
+    private var popupCache: [String: (plane: SCNPlane, size: CGSize)] = [:]
+    private var lastTrailTime: CGFloat = -10
+    private static let maxFruits = 36
+    private static let maxBits = 80
+    private static let maxPeels = 180
+    private static let maxPopups = 10
 
     private var frame = CGRect.zero
     private var floorY: CGFloat = 0
@@ -496,14 +522,19 @@ final class OrangeSmash {
 
     /// Clears the heap of peel off the bottom of the screen.
     private func sweep() {
-        for peel in peels { peel.node.removeFromParentNode() }
-        peels = []
+        for peel in fallingPeels { peel.node.removeFromParentNode() }
+        for node in landedPeels { node.removeFromParentNode() }
+        fallingPeels = []
+        landedPeels = []
         pile = [:]
     }
 
     func stop() {
         clear()
         sweep()
+        popupCache.removeAll()
+        fruitTemplates.removeAll()
+        bitSpheres.removeAll()
         host.playing = false
     }
 
@@ -540,9 +571,38 @@ final class OrangeSmash {
         kind == .heart || kind == .freeze || kind == .frenzy
     }
 
+    private func makePeelSphere(gold: Bool) -> SCNSphere {
+        let sphere = SCNSphere(radius: 10)
+        sphere.segmentCount = 8
+        let m = SCNMaterial()
+        m.lightingModel = .blinn
+        m.diffuse.contents = gold
+            ? NSColor(srgbRed: 1.0, green: 0.82, blue: 0.2, alpha: 1)
+            : NSColor(srgbRed: 1.0, green: 0.55, blue: 0.08, alpha: 1)
+        sphere.firstMaterial = m
+        return sphere
+    }
+
+    private func bitGeometry(for color: NSColor) -> SCNSphere {
+        let key = color.description
+        if let existing = bitSpheres[key] { return existing }
+        let sphere = SCNSphere(radius: 1)
+        sphere.segmentCount = 6
+        let m = SCNMaterial()
+        m.lightingModel = .constant
+        m.diffuse.contents = color
+        sphere.firstMaterial = m
+        if bitSpheres.count < 24 { bitSpheres[key] = sphere }
+        return sphere
+    }
+
     private func makeFruit(kind: Kind, radius: CGFloat) -> SCNNode {
+        if let template = fruitTemplates[kind] {
+            return template.clone()
+        }
         let node = SCNNode()
         let sphere = SCNSphere(radius: radius)
+        sphere.segmentCount = 16
         let m = SCNMaterial()
         m.lightingModel = .blinn
         m.specular.contents = NSColor(white: 1, alpha: 0.5)
@@ -558,6 +618,8 @@ final class OrangeSmash {
         if isSpecial(kind) {
             // Power-ups wear a bright ring so they read as different at a glance.
             let ring = SCNTorus(ringRadius: radius * 1.3, pipeRadius: 2.2)
+            ring.ringSegmentCount = 24
+            ring.pipeSegmentCount = 8
             let ringMaterial = SCNMaterial()
             ringMaterial.lightingModel = .constant
             ringMaterial.diffuse.contents = NSColor.white
@@ -565,11 +627,13 @@ final class OrangeSmash {
             let ringNode = SCNNode(geometry: ring)
             ringNode.eulerAngles = v3(CGFloat.pi / 2, 0, 0)
             node.addChildNode(ringNode)
-            return node
+            fruitTemplates[kind] = node
+            return node.clone()
         }
 
         // A leaf for fruit, a lit fuse for bombs.
         let top = SCNSphere(radius: radius * 0.3)
+        top.segmentCount = 10
         let topMaterial = SCNMaterial()
         if kind == .bomb {
             topMaterial.diffuse.contents = NSColor.red
@@ -582,7 +646,8 @@ final class OrangeSmash {
         topNode.position = v3(radius * 0.25, radius * 0.92, 0)
         topNode.scale = kind == .bomb ? v3(0.7, 0.7, 0.7) : v3(1.5, 0.45, 0.8)
         node.addChildNode(topNode)
-        return node
+        fruitTemplates[kind] = node
+        return node.clone()
     }
 
     private func place(_ node: SCNNode, at point: CGPoint, z: CGFloat) {
@@ -590,6 +655,7 @@ final class OrangeSmash {
     }
 
     private func spawn(_ kind: Kind, at point: CGPoint, vel: CGVector, free: Bool) {
+        if fruits.count >= OrangeSmash.maxFruits { return }
         let radius = size(kind)
         let node = makeFruit(kind: kind, radius: radius)
         place(node, at: point, z: 700)
@@ -624,15 +690,14 @@ final class OrangeSmash {
     }
 
     private func burst(at point: CGPoint, color: NSColor, count: Int, speed: CGFloat) {
+        let highlight = NSColor(srgbRed: 1.0, green: 0.92, blue: 0.7, alpha: 1)
+        let mainGeo = bitGeometry(for: color)
+        let lightGeo = bitGeometry(for: highlight)
         var i = 0
-        while i < count && bits.count < 160 {
-            let sphere = SCNSphere(radius: CGFloat.random(in: 3...8))
-            sphere.segmentCount = 8
-            let m = SCNMaterial()
-            m.lightingModel = .constant
-            m.diffuse.contents = i % 3 == 0 ? NSColor(srgbRed: 1.0, green: 0.92, blue: 0.7, alpha: 1) : color
-            sphere.firstMaterial = m
-            let node = SCNNode(geometry: sphere)
+        while i < count && bits.count < OrangeSmash.maxBits {
+            let r = CGFloat.random(in: 3...8)
+            let node = SCNNode(geometry: i % 3 == 0 ? lightGeo : mainGeo)
+            node.scale = v3(r, r, r)
             place(node, at: point, z: 720)
             stage.addChildNode(node)
             let angle = CGFloat.random(in: 0...(2 * CGFloat.pi))
@@ -646,43 +711,51 @@ final class OrangeSmash {
 
     /// A bright dot left behind a fast cursor, so a flick reads as a blade.
     private func trail(at point: CGPoint) {
-        if bits.count >= 160 { return }
-        let sphere = SCNSphere(radius: 5)
-        sphere.segmentCount = 8
-        let m = SCNMaterial()
-        m.lightingModel = .constant
-        m.diffuse.contents = NSColor.white
-        sphere.firstMaterial = m
-        let node = SCNNode(geometry: sphere)
+        if bits.count >= OrangeSmash.maxBits { return }
+        let node = SCNNode(geometry: whiteTrailSphere)
         place(node, at: point, z: 730)
         stage.addChildNode(node)
         bits.append(Bit(node: node, vel: CGVector(dx: 0, dy: 0), life: 0.22, total: 0.22, weight: 0))
     }
 
+    private func popupPlane(words: String, color: NSColor, size: CGFloat) -> SCNPlane {
+        let key = "\(words)|\(Int(size))|\(color.description)"
+        if let cached = popupCache[key] { return cached.plane }
+        let font = NSFont.systemFont(ofSize: size, weight: .heavy)
+        let shadow = NSShadow()
+        shadow.shadowOffset = NSSize(width: 1.5, height: -1.5)
+        shadow.shadowBlurRadius = 2
+        shadow.shadowColor = NSColor(white: 0, alpha: 0.75)
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .foregroundColor: color,
+            .shadow: shadow
+        ]
+        let text = NSAttributedString(string: words, attributes: attrs)
+        let measured = text.size()
+        let pad: CGFloat = 6
+        let imgSize = NSSize(width: ceil(measured.width + pad * 2), height: ceil(measured.height + pad * 2))
+        let image = NSImage(size: imgSize)
+        image.lockFocus()
+        text.draw(at: NSPoint(x: pad, y: pad))
+        image.unlockFocus()
+        let plane = SCNPlane(width: imgSize.width, height: imgSize.height)
+        let material = SCNMaterial()
+        material.lightingModel = .constant
+        material.diffuse.contents = image
+        material.isDoubleSided = true
+        plane.firstMaterial = material
+        if popupCache.count >= 32 { popupCache.removeAll() }
+        popupCache[key] = (plane, imgSize)
+        return plane
+    }
+
     private func popup(_ words: String, at point: CGPoint, color: NSColor, size: CGFloat) {
-        if popups.count > 14 {
+        if popups.count >= OrangeSmash.maxPopups {
             popups[0].node.removeFromParentNode()
             popups.remove(at: 0)
         }
-        let holder = SCNNode()
-        var layer = 0
-        while layer < 2 {
-            // A dark copy just behind keeps the words readable over any window.
-            let text = SCNText(string: words, extrusionDepth: 0)
-            text.font = NSFont.systemFont(ofSize: size, weight: .heavy)
-            text.flatness = 0.4
-            let m = SCNMaterial()
-            m.lightingModel = .constant
-            m.diffuse.contents = layer == 0 ? NSColor(white: 0, alpha: 0.75) : color
-            text.firstMaterial = m
-            let node = SCNNode(geometry: text)
-            let box = node.boundingBox
-            let middle = (box.min.x + box.max.x) / 2
-            let offset: CGFloat = layer == 0 ? 1.5 : 0
-            node.position = v3(-middle + offset, -offset, CGFloat(layer))
-            holder.addChildNode(node)
-            layer += 1
-        }
+        let holder = SCNNode(geometry: popupPlane(words: words, color: color, size: size))
         let x = max(frame.minX + 60, min(frame.maxX - 60, point.x))
         place(holder, at: CGPoint(x: x, y: point.y), z: 760)
         stage.addChildNode(holder)
@@ -690,32 +763,29 @@ final class OrangeSmash {
     }
 
     private func dropPeel(at point: CGPoint, kind: Kind) {
-        let pieces = kind == .big ? 5 : (kind == .golden ? 4 : (kind == .mini ? 2 : 3))
+        let pieces = kind == .big ? 4 : (kind == .golden ? 3 : (kind == .mini ? 2 : 2))
+        let sphere = kind == .golden ? goldPeelSphere : orangePeelSphere
         var i = 0
         while i < pieces {
-            let piece = CGFloat.random(in: 8...13)
-            let sphere = SCNSphere(radius: piece)
-            sphere.segmentCount = 10
-            let m = SCNMaterial()
-            m.lightingModel = .blinn
-            let shade = CGFloat.random(in: -0.08...0.08)
-            m.diffuse.contents = kind == .golden
-                ? NSColor(srgbRed: 1.0, green: 0.82 + shade, blue: 0.2, alpha: 1)
-                : NSColor(srgbRed: 1.0, green: 0.55 + shade, blue: 0.08, alpha: 1)
-            sphere.firstMaterial = m
+            let scale = CGFloat.random(in: 0.8...1.25)
             let node = SCNNode(geometry: sphere)
-            node.scale = v3(1, 0.36, 1)   // a curl of rind rather than a ball
+            node.scale = v3(scale, scale * 0.36, scale)   // a curl of rind rather than a ball
             place(node, at: point, z: 690)
             stage.addChildNode(node)
-            peels.append(Peel(node: node, pos: point,
+            fallingPeels.append(Peel(node: node, pos: point,
                               vel: CGVector(dx: CGFloat.random(in: -150...150), dy: CGFloat.random(in: 40...260)),
                               angle: CGFloat.random(in: 0...3), spin: CGFloat.random(in: -7...7), landed: false))
             i += 1
         }
         // Keep the heap from growing without limit: the oldest pieces go first.
-        while peels.count > 500 {
-            peels[0].node.removeFromParentNode()
-            peels.remove(at: 0)
+        while fallingPeels.count + landedPeels.count > OrangeSmash.maxPeels {
+            if !landedPeels.isEmpty {
+                landedPeels.removeFirst().removeFromParentNode()
+            } else if !fallingPeels.isEmpty {
+                fallingPeels.removeFirst().node.removeFromParentNode()
+            } else {
+                break
+            }
         }
     }
 
@@ -1052,29 +1122,33 @@ final class OrangeSmash {
     }
 
     private func settlePeels(dt: CGFloat) {
-        var i = 0
-        while i < peels.count {
-            if !peels[i].landed {
-                peels[i].vel.dy -= gravity * dt
-                peels[i].pos.x = max(frame.minX + 10, min(frame.maxX - 10, peels[i].pos.x + peels[i].vel.dx * dt))
-                peels[i].pos.y += peels[i].vel.dy * dt
-                peels[i].angle += peels[i].spin * dt
-                let slot = Int((peels[i].pos.x - frame.minX) / column)
-                let top = floorY + (pile[slot] ?? 0) + 4
-                if peels[i].pos.y <= top && peels[i].vel.dy < 0 {
-                    // Landed: lie nearly flat on the heap and raise it here, and a little either side.
-                    peels[i].pos.y = top
-                    peels[i].landed = true
-                    peels[i].angle = CGFloat.random(in: -0.5...0.5)
-                    pile[slot] = min(240, (pile[slot] ?? 0) + 4.5)
-                    pile[slot - 1] = min(240, (pile[slot - 1] ?? 0) + 2)
-                    pile[slot + 1] = min(240, (pile[slot + 1] ?? 0) + 2)
-                }
-                let peel = peels[i]
-                place(peel.node, at: peel.pos, z: 690)
-                peel.node.eulerAngles = v3(0, 0, peel.angle)
+        var i = fallingPeels.count - 1
+        while i >= 0 {
+            fallingPeels[i].vel.dy -= gravity * dt
+            fallingPeels[i].pos.x = max(frame.minX + 10, min(frame.maxX - 10, fallingPeels[i].pos.x + fallingPeels[i].vel.dx * dt))
+            fallingPeels[i].pos.y += fallingPeels[i].vel.dy * dt
+            fallingPeels[i].angle += fallingPeels[i].spin * dt
+            let slot = Int((fallingPeels[i].pos.x - frame.minX) / column)
+            let top = floorY + (pile[slot] ?? 0) + 4
+            var settled = false
+            if fallingPeels[i].pos.y <= top && fallingPeels[i].vel.dy < 0 {
+                // Landed: lie nearly flat on the heap and raise it here, and a little either side.
+                fallingPeels[i].pos.y = top
+                fallingPeels[i].landed = true
+                fallingPeels[i].angle = CGFloat.random(in: -0.5...0.5)
+                pile[slot] = min(240, (pile[slot] ?? 0) + 4.5)
+                pile[slot - 1] = min(240, (pile[slot - 1] ?? 0) + 2)
+                pile[slot + 1] = min(240, (pile[slot + 1] ?? 0) + 2)
+                settled = true
             }
-            i += 1
+            let peel = fallingPeels[i]
+            place(peel.node, at: peel.pos, z: 690)
+            peel.node.eulerAngles = v3(0, 0, peel.angle)
+            if settled {
+                landedPeels.append(peel.node)
+                fallingPeels.remove(at: i)
+            }
+            i -= 1
         }
     }
 
@@ -1187,8 +1261,10 @@ final class OrangeSmash {
 
         // A flick fast enough counts as a blade; easing the cursor past something leaves it alone.
         if tracked && dt > 0 && moved / dt > 900 && moved < 700 {
-            trail(at: mouse)
-            trail(at: CGPoint(x: (mouse.x + previous.x) / 2, y: (mouse.y + previous.y) / 2))
+            if clock - lastTrailTime >= 0.025 && moved >= 18 {
+                lastTrailTime = clock
+                trail(at: mouse)
+            }
             slice(from: previous, to: mouse)
             if state.over { return }
         }
